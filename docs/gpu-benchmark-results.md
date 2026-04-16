@@ -14,7 +14,7 @@
 | ONNX INT8 CPU (xenova/bge-m3) | >20 Min, abgebrochen | — | 39 GB | — | OOM-Risiko |
 | ONNX + DirectML (FP32) | CRASH | — | — | — | Attention-Op nicht unterstützt |
 | ONNX INT8 + DirectML | CRASH | — | — | — | FusedMatMul "Falscher Parameter" |
-| PyTorch + ROCm (Python 3.12) | **nicht getestet** | — | — | — | **5-15x erwartet** (nächster Schritt) |
+| PyTorch + ROCm (Python 3.12) | **nicht getestet** | — | — | — | Segfault — HIP-Treiber fehlt |
 
 ## Analyse
 
@@ -47,14 +47,24 @@ BGE-M3 ist ein großes Modell (568M Parameter, 8192 Max Seq Length). Die verfüg
 22% schneller als FP32, 8% weniger RAM. Automatisch aktiv seit v0.2.0. Full Reindex: 17 Min statt 21 Min. Incremental bleibt 0.2s.
 
 ### Nächster Schritt: PyTorch + ROCm (Python 3.12)
-AMD ROCm 7.2.1 auf Windows unterstützt die RX 7900 XTX offiziell. Erwarteter Speedup: 5-15x (17 Min → 1-3 Min). **Blocker: Python 3.12 nötig** (offizielle ROCm Wheels nur für cp312).
+AMD ROCm 7.2.1 auf Windows unterstützt die RX 7900 XTX offiziell. Erwarteter Speedup: 5-15x.
 
-Installation (wenn bereit für Python 3.12):
+**Status:** Python-Packages installierbar, aber **Segfault bei GPU-Init** weil der AMD HIP SDK Treiber fehlt. PyTorch importiert und erkennt `HIP 7.2` — aber `torch.cuda.is_available()` crasht.
+
+**Was André machen muss (einmalig):**
+1. AMD Software PRO Edition installieren (nicht Standard-Adrenalin) — enthält HIP Runtime
+2. Oder: HIP SDK separat von https://rocm.docs.amd.com/projects/install-on-windows/ installieren
+3. Dann: `hipconfig.exe` muss im PATH sein
+
+**Danach Installation:**
 ```bash
-uv venv --python 3.12
-pip install https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torch-2.9.1+rocm7.2.1-cp312-cp312-win_amd64.whl
+uv venv .venv-rocm --python 3.12
+pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm-7.2.1.tar.gz
+pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_core-7.2.1-py3-none-win_amd64.whl
+pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_devel-7.2.1-py3-none-win_amd64.whl
+pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_libraries_custom-7.2.1-py3-none-win_amd64.whl
+pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torch-2.9.1+rocm7.2.1-cp312-cp312-win_amd64.whl
 pip install sentence-transformers
-# sentence-transformers erkennt CUDA/ROCm automatisch via torch.cuda.is_available()
 ```
 
 ### Für NVIDIA-User
