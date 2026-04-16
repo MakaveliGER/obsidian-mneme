@@ -20,4 +20,8 @@ class SentenceTransformersProvider(EmbeddingProvider):
         ).tolist()
 
     def dimension(self) -> int:
-        return self._load_model().get_sentence_embedding_dimension()
+        model = self._load_model()
+        # get_sentence_embedding_dimension was renamed in newer versions
+        if hasattr(model, "get_embedding_dimension"):
+            return model.get_embedding_dimension()
+        return model.get_sentence_embedding_dimension()

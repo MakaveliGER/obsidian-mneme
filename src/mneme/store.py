@@ -147,7 +147,7 @@ class Store:
                 path,
                 title,
                 content_hash,
-                json.dumps(frontmatter),
+                json.dumps(frontmatter, default=str),
                 json.dumps(tags),
                 json.dumps(wikilinks),
                 now,
