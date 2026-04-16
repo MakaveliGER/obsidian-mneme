@@ -141,6 +141,50 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         }
 
     @mcp.tool()
+    def get_note_context(path: str, depth: int = 1, similar_k: int = 3) -> dict:
+        """Get a note with its graph neighbors and similar notes as a context bundle.
+
+        Args:
+            path: Vault-relative path of the note.
+            depth: How many hops in the wikilink graph to traverse (default 1).
+            similar_k: Number of semantically similar notes to include (default 3).
+
+        Returns:
+            Context bundle with the note, its graph neighbors, and similar notes.
+        """
+        store = state["store"]
+        note = store.get_note_by_path(path)
+        if not note:
+            return {"error": f"Note not found: {path}"}
+
+        note_id = note["id"]
+
+        # Graph neighbors (linked + backlinked)
+        neighbors = store.get_graph_neighbors(note_id, depth=depth)
+
+        # Semantically similar notes
+        similar = state["search"].get_similar(path=path, top_k=similar_k)
+
+        return {
+            "note": {
+                "path": note["path"],
+                "title": note["title"],
+                "tags": note["tags"],
+                "wikilinks": note["wikilinks"],
+            },
+            "graph_neighbors": [
+                {"path": n["path"], "title": n["title"], "direction": n["direction"]}
+                for n in neighbors
+            ],
+            "similar_notes": [
+                {"path": r.note_path, "title": r.note_title, "score": round(r.score, 4)}
+                for r in similar
+            ],
+            "total_neighbors": len(neighbors),
+            "total_similar": len(similar),
+        }
+
+    @mcp.tool()
     def vault_stats() -> dict:
         """Get index statistics — total notes, chunks, last indexed, DB size.
 

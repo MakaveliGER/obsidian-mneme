@@ -11,9 +11,8 @@ from mneme.config import MnemeConfig, VaultConfig, EmbeddingConfig, DatabaseConf
 from mneme.server import create_server
 
 
-def test_server_has_six_tools(tmp_path: Path):
-    """The MCP server must expose exactly 6 tools."""
-    # Create a real (tiny) store so eager init works
+def test_server_has_seven_tools(tmp_path: Path):
+    """The MCP server must expose exactly 7 tools."""
     db_path = tmp_path / "test.db"
     config = MnemeConfig(
         vault=VaultConfig(path=str(tmp_path)),
@@ -27,6 +26,6 @@ def test_server_has_six_tools(tmp_path: Path):
         server = create_server(config)
 
     tool_names = list(server._tool_manager._tools.keys())
-    assert len(tool_names) == 6
-    expected = {"search_notes", "get_similar", "vault_stats", "reindex", "get_config", "update_config"}
+    assert len(tool_names) == 7
+    expected = {"search_notes", "get_similar", "get_note_context", "vault_stats", "reindex", "get_config", "update_config"}
     assert set(tool_names) == expected
