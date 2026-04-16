@@ -58,6 +58,11 @@ class RerankingConfig(BaseModel):
     threshold: float = 0.3  # Ergebnisse unter diesem Score entfernen
 
 
+class ScoringConfig(BaseModel):
+    gars_enabled: bool = False  # Opt-in
+    graph_weight: float = 0.3   # 0.0 = nur RRF, 1.0 = nur Graph
+
+
 class MnemeConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MNEME_", env_nested_delimiter="__")
 
@@ -68,6 +73,7 @@ class MnemeConfig(BaseSettings):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     reranking: RerankingConfig = Field(default_factory=RerankingConfig)
+    scoring: ScoringConfig = Field(default_factory=ScoringConfig)
 
     @property
     def db_path(self) -> Path:

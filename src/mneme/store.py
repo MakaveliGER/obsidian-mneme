@@ -402,6 +402,28 @@ class Store:
         rows = self._conn.execute("SELECT path FROM notes").fetchall()
         return [r[0] for r in rows]
 
+    def get_centrality_map(self) -> dict[str, float]:
+        """Get normalized in-degree centrality for all notes.
+
+        Returns dict mapping note_path to centrality in [0, 1].
+        Most-linked note gets 1.0, no backlinks gets 0.0.
+        """
+        rows = self._conn.execute(
+            """SELECT n.path, COUNT(l.source_id) as in_degree
+               FROM notes n
+               LEFT JOIN links l ON n.id = l.target_id
+               GROUP BY n.id"""
+        ).fetchall()
+
+        if not rows:
+            return {}
+
+        max_degree = max(r[1] for r in rows)
+        if max_degree == 0:
+            return {r[0]: 0.0 for r in rows}
+
+        return {r[0]: r[1] / max_degree for r in rows}
+
     def build_alias_map(self) -> dict[str, int]:
         """Build a map from wikilink target strings to note_ids.
 

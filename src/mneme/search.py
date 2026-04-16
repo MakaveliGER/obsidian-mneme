@@ -51,12 +51,22 @@ class SearchEngine:
         embedding_provider: EmbeddingProvider,
         config,
         reranker: Reranker | None = None,
+        scoring_config=None,
     ) -> None:
         # config duck-typed: needs .vector_weight, .bm25_weight, .top_k
+        # scoring_config duck-typed: needs .gars_enabled, .graph_weight
         self.store = store
         self.embedding_provider = embedding_provider
         self.config = config
         self.reranker = reranker
+        self.scoring_config = scoring_config
+        self._centrality_map: dict[str, float] | None = None
+
+    def _load_centrality_map(self) -> dict[str, float]:
+        """Lazy-load and cache the centrality map from the store."""
+        if self._centrality_map is None:
+            self._centrality_map = self.store.get_centrality_map()
+        return self._centrality_map
 
     def search(
         self,
@@ -107,9 +117,31 @@ class SearchEngine:
         fused = rrf_fusion([vector_results, bm25_results])
 
         if self.reranker is not None:
-            return self.reranker.rerank(query, fused, top_k)
+            results = self.reranker.rerank(query, fused, top_k)
+        else:
+            results = fused[:top_k]
 
-        return fused[:top_k]
+        # --- GARS: Graph-Aware Retrieval Scoring (optional, last step) ---
+        if self.scoring_config is not None and self.scoring_config.gars_enabled:
+            centrality_map = self._load_centrality_map()
+            graph_weight = self.scoring_config.graph_weight
+            scored: list[SearchResult] = []
+            for r in results:
+                centrality = centrality_map.get(r.note_path, 0.0)
+                final_score = (1 - graph_weight) * r.score + graph_weight * centrality
+                scored.append(SearchResult(
+                    chunk_id=r.chunk_id,
+                    note_path=r.note_path,
+                    note_title=r.note_title,
+                    heading_path=r.heading_path,
+                    content=r.content,
+                    score=final_score,
+                    tags=r.tags,
+                ))
+            scored.sort(key=lambda r: r.score, reverse=True)
+            return scored
+
+        return results
 
     def get_similar(self, path: str, top_k: int = 5) -> list[SearchResult]:
         """Find notes similar to the note at *path* using average chunk embedding.
