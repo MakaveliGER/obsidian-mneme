@@ -307,6 +307,76 @@ Plugin setzt `--mneme-*` Custom Properties und nutzt ansonsten Obsidians native 
 
 ---
 
+## Server-Lifecycle
+
+### Startup (Obsidian öffnet)
+
+```
+Plugin.onload()
+  → onLayoutReady()
+    → autoStartServer? → spawn("mneme serve") als Hintergrund-Prozess
+    → reindexOnStart? → mneme reindex (inkrementell, fängt Sync-Änderungen auf)
+    → Watchdog läuft automatisch (Teil des Servers)
+    → Status Bar zeigt "online"
+```
+
+### Während Nutzung
+
+- **Watchdog** (Teil des MCP-Servers) überwacht alle Dateiänderungen live
+- Jede gespeicherte Notiz → automatischer inkrementeller Reindex (~0.2s)
+- Debouncing: 2 Sekunden
+
+### Shutdown (Obsidian schließt)
+
+```
+Plugin.onunload()
+  → reindexOnClose? → mneme reindex (finaler Sync)
+  → Server-Prozess beenden (kill)
+  → Status Bar Polling stoppen
+```
+
+### Server & Sync Settings
+
+| Setting | Default | Beschreibung |
+|---|---|---|
+| Server automatisch starten | An | "Startet den Mneme-Server beim Öffnen von Obsidian. Der Server überwacht Dateiänderungen automatisch im Hintergrund (Watchdog)." |
+| Reindex bei Start | An | "Synchronisiert den Index beim Öffnen. Wichtig bei Sync, Mobile, oder externen Änderungen." |
+| Reindex beim Schließen | Aus | "Stellt sicher dass alle Änderungen vor dem Beenden indexiert sind." |
+
+Info-Text: "Der Watchdog erfasst automatisch alle Dateiänderungen während Obsidian läuft. Ein manueller Reindex ist nur nötig wenn Notizen außerhalb von Obsidian geändert wurden."
+
+---
+
+## GPU-Support
+
+### Für den Release
+
+**CPU als Default** — funktioniert überall, einfache Installation (`pip install mneme`). Suche ist auch auf CPU schnell genug (75ms ohne Reranker).
+
+**GPU als optionale Anleitung** in der Doku:
+- NVIDIA: `pip install torch --index-url .../cu124` → automatisch erkannt
+- AMD ROCm: HIP SDK + Python 3.12 + spezielle Wheels (Step-by-Step-Anleitung)
+
+### Plugin-Integration
+
+Das Plugin ruft `mneme.exe` per Pfad auf. GPU-Support ergibt sich automatisch aus der Python-Umgebung in der Mneme installiert ist:
+- `mneme.exe` aus CPU-Env → CPU
+- `mneme.exe` aus GPU-Env → GPU
+
+Setting "Mneme Pfad" zeigt auf die gewünschte Installation.
+
+### Performance-Impact
+
+| Feature | CPU | GPU |
+|---|---|---|
+| Suche (ohne Reranker) | 75ms | 20ms |
+| Suche (mit Reranker) | 2-5s | ~100ms |
+| Full Reindex (160 Notes) | 17 Min | 12 Sek |
+
+**Empfehlung:** Reranker nur mit GPU aktivieren. Auf CPU ist der Lag bei jeder Suche spürbar (2-5s).
+
+---
+
 ## UX-Prinzipien
 
 - **Zero-Config-Start:** Plugin installieren → Vault auto-detect → Index starten — kein Terminal
@@ -345,9 +415,26 @@ Plugin setzt `--mneme-*` Custom Properties und nutzt ansonsten Obsidians native 
 
 ## Roadmap
 
-| Version | Inhalt |
-|---|---|
-| v0.1 | Settings Tab + Status Bar + Reindex Command |
-| v0.2 | Search Sidebar + Command Palette (Search, Similar) |
-| v0.3 | Health Modal + Zero-Config-Start-Flow |
-| v1.0 | BRAT-ready, Branding poliert, Community Store Submission |
+| Version | Inhalt | Status |
+|---|---|---|
+| v0.1 | Settings Tab + Status Bar + Reindex Command + Server-Lifecycle | ✅ Gebaut |
+| v0.2 | Search Sidebar + Command Palette (Search, Similar) | ✅ Gebaut |
+| v0.3 | Health Modal + Custom Ribbon Icon (Muse SVG) | ✅ Gebaut |
+| v0.4 | GPU-Settings + Query Expansion + Sync-Settings | ✅ Gebaut |
+| v0.5 | In Obsidian testen, Bugs fixen, Polish | ⬚ Next |
+| v1.0 | BRAT-ready, README, Community Store Submission | ⬚ |
+
+## Implementation Status (2026-04-17)
+
+Alle UI-Komponenten gebaut, TypeScript kompiliert fehlerfrei, 24 KB Bundle.
+
+| Datei | Beschreibung | LOC |
+|---|---|---|
+| `main.ts` | Plugin lifecycle, ribbon, commands, server start/stop | ~190 |
+| `settings.ts` | Vollständige Settings mit deutschen Beschreibungen | ~500 |
+| `search-view.ts` | Sidebar mit Search + Similar-Tab | ~220 |
+| `health-modal.ts` | Vault Health Report Modal | ~130 |
+| `status-bar.ts` | Online/Offline Status + Polling | ~55 |
+| `mneme-client.ts` | CLI-Kommunikation + Server-Management | ~170 |
+| `types.ts` | Interfaces + Defaults | ~130 |
+| `styles.css` | Branding + Theme-Kompatibilität | ~200 |
