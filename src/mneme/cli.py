@@ -346,6 +346,45 @@ def install_hooks(vault_path: str | None, settings_file: str):
     click.echo("Restart Claude Code (Claudian) for the hook to take effect.")
 
 
+@main.command("auto-search")
+@click.argument("mode", type=click.Choice(["off", "smart", "always"]))
+def auto_search(mode: str):
+    """Configure automatic search behavior.
+
+    \b
+    Modes:
+      off     — Only explicit @mneme / search_notes calls
+      smart   — CLAUDE.md rule: Claude uses search_notes proactively
+      always  — Smart + PreToolUse hooks for automatic context injection
+    """
+    from mneme.auto_search import apply_mode
+
+    config = load_config()
+    if not config.vault.path:
+        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
+        raise SystemExit(1)
+
+    vault_path = Path(config.vault.path).resolve()
+    result = apply_mode(mode, vault_path, config.auto_search)
+
+    # Persist new mode
+    config.auto_search.mode = mode
+    save_config(config)
+
+    # Feedback
+    click.echo(f"Auto-search mode set to: {mode}")
+    if result["claude_md_changed"]:
+        claude_md = vault_path / config.auto_search.claude_md_path
+        click.echo(f"  CLAUDE.md updated: {claude_md}")
+    else:
+        click.echo("  CLAUDE.md: no change")
+    if result["hooks_changed"]:
+        settings_path = vault_path / ".claude" / "settings.local.json"
+        click.echo(f"  Hooks updated: {settings_path}")
+    else:
+        click.echo("  Hooks: no change")
+
+
 def _deep_merge_hooks(base: dict, override: dict) -> dict:
     """Merge hook config dicts. Mneme hook entries are added if not already present.
 

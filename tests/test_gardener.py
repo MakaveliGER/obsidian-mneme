@@ -191,6 +191,68 @@ def test_full_report_structure(gardener_setup):
     assert isinstance(report["near_duplicates"], list)
 
 
+def test_find_orphans_excludes_patterns(tmp_path: Path):
+    """Notes matching exclude_patterns must not appear in orphan results."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    # Regular orphan — should appear
+    sub = vault / "notes"
+    sub.mkdir()
+    (sub / "orphan.md").write_text(
+        "---\ntags: [test]\n---\n## Orphan\n\nIsolated note.",
+        encoding="utf-8",
+    )
+
+    # Newsletter orphan — must be excluded
+    newsletter = vault / "Newsletter"
+    newsletter.mkdir()
+    (newsletter / "digest.md").write_text(
+        "## Digest\n\nWeekly digest.",
+        encoding="utf-8",
+    )
+
+    store, indexer, provider, config = _make_store_and_indexer(vault, tmp_path)
+    indexer.index_vault(full=True)
+    search_engine = _make_search_engine(store, provider, config)
+
+    gardener = VaultGardener(store, search_engine, exclude_patterns=["**/Newsletter/**"])
+    orphans = gardener.find_orphans()
+    orphan_paths = [o["path"] for o in orphans]
+
+    assert any("orphan" in p for p in orphan_paths), (
+        f"Expected orphan.md in results, got: {orphan_paths}"
+    )
+    assert not any("Newsletter" in p or "digest" in p for p in orphan_paths), (
+        f"Newsletter/digest.md must be excluded, got: {orphan_paths}"
+    )
+
+
+def test_exclude_patterns_empty_no_filtering(tmp_path: Path):
+    """With empty exclude_patterns all orphaned notes in subfolders are reported."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    newsletter = vault / "Newsletter"
+    newsletter.mkdir()
+    (newsletter / "digest.md").write_text(
+        "## Digest\n\nWeekly digest.",
+        encoding="utf-8",
+    )
+
+    store, indexer, provider, config = _make_store_and_indexer(vault, tmp_path)
+    indexer.index_vault(full=True)
+    search_engine = _make_search_engine(store, provider, config)
+
+    gardener = VaultGardener(store, search_engine, exclude_patterns=[])
+    orphans = gardener.find_orphans()
+    orphan_paths = [o["path"] for o in orphans]
+
+    assert any("digest" in p or "Newsletter" in p for p in orphan_paths), (
+        f"Expected digest.md in results with no filtering, got: {orphan_paths}"
+    )
+
+
 def test_vault_health_selective_checks(gardener_setup):
     """Selective checks: only orphans check runs, other keys absent."""
     from unittest.mock import patch

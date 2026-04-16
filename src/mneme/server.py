@@ -51,7 +51,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
             reranker.warmup()
 
         search_engine = SearchEngine(store, provider, config.search, reranker=reranker, scoring_config=config.scoring)
-        gardener = VaultGardener(store, search_engine)
+        gardener = VaultGardener(store, search_engine, exclude_patterns=config.health.exclude_patterns)
         state["store"] = store
         state["provider"] = provider
         state["indexer"] = indexer

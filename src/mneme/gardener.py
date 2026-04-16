@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 from datetime import datetime, timezone, timedelta
 
@@ -10,9 +11,29 @@ from mneme.search import SearchEngine
 
 
 class VaultGardener:
-    def __init__(self, store: Store, search_engine: SearchEngine) -> None:
+    def __init__(
+        self,
+        store: Store,
+        search_engine: SearchEngine,
+        exclude_patterns: list[str] | None = None,
+    ) -> None:
         self.store = store
         self.search = search_engine
+        self._exclude_patterns: list[str] = exclude_patterns if exclude_patterns is not None else []
+
+    def _is_excluded(self, path: str) -> bool:
+        """Return True if path matches any of the configured exclude patterns.
+
+        Normalizes backslashes to forward slashes before matching. A leading '/'
+        is prepended so that patterns like '**/Newsletter/**' also match paths
+        where the target directory sits at the vault root (e.g. 'Newsletter/x.md').
+        """
+        normalized = path.replace("\\", "/")
+        prefixed = "/" + normalized
+        return any(
+            fnmatch.fnmatch(normalized, pattern) or fnmatch.fnmatch(prefixed, pattern)
+            for pattern in self._exclude_patterns
+        )
 
     def full_report(
         self,
@@ -47,6 +68,8 @@ class VaultGardener:
             # Exclude root-level files (no "/" in path)
             if "/" not in path and "\\" not in path:
                 continue
+            if self._is_excluded(path):
+                continue
             results.append({
                 "path": path,
                 "title": title,
@@ -80,6 +103,8 @@ class VaultGardener:
         results: list[dict] = []
 
         for note_id, path, title, total_links in rows:
+            if self._is_excluded(path):
+                continue
             # Collect paths of already-linked notes (outgoing + incoming)
             linked_paths: set[str] = set()
             for row in self.store._conn.execute(
@@ -135,6 +160,8 @@ class VaultGardener:
         now = datetime.now(timezone.utc)
         results = []
         for path, title, frontmatter_json, updated_at in rows:
+            if self._is_excluded(path):
+                continue
             fm = json.loads(frontmatter_json) if frontmatter_json else {}
             # Double-check: frontmatter LIKE can have false positives
             if fm.get("status") != "aktiv":
@@ -163,7 +190,7 @@ class VaultGardener:
         Checks a sample of up to 30 notes. Each pair is reported only once.
         """
         all_paths = self.store.get_all_note_paths()
-        sample = all_paths[:30]
+        sample = [p for p in all_paths[:30] if not self._is_excluded(p)]
 
         seen_pairs: set[frozenset[str]] = set()
         results: list[dict] = []
@@ -172,6 +199,8 @@ class VaultGardener:
             similar = self.search.get_similar(path, top_k=3)
             for r in similar:
                 if r.score < threshold:
+                    continue
+                if self._is_excluded(r.note_path):
                     continue
                 pair = frozenset([path, r.note_path])
                 if pair in seen_pairs:

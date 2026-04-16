@@ -63,6 +63,20 @@ class ScoringConfig(BaseModel):
     graph_weight: float = 0.3   # 0.0 = nur RRF, 1.0 = nur Graph
 
 
+class AutoSearchConfig(BaseModel):
+    mode: str = "smart"                    # "off" | "smart" | "always"
+    claude_md_path: str = "CLAUDE.md"      # Relativ zum Vault-Root
+    hook_matchers: list[str] = Field(default_factory=lambda: ["Read"])
+
+
+class HealthConfig(BaseModel):
+    # TODO(release): Before PyPI publish, change defaults to [] — every vault has different structures
+    exclude_patterns: list[str] = Field(default_factory=lambda: [
+        "**/Newsletter/**",
+        "**/Daily Notes/**",
+    ])
+
+
 class MnemeConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MNEME_", env_nested_delimiter="__")
 
@@ -74,6 +88,8 @@ class MnemeConfig(BaseSettings):
     server: ServerConfig = Field(default_factory=ServerConfig)
     reranking: RerankingConfig = Field(default_factory=RerankingConfig)
     scoring: ScoringConfig = Field(default_factory=ScoringConfig)
+    auto_search: AutoSearchConfig = Field(default_factory=AutoSearchConfig)
+    health: HealthConfig = Field(default_factory=HealthConfig)
 
     @property
     def db_path(self) -> Path:
