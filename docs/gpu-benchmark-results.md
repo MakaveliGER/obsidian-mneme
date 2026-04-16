@@ -6,40 +6,51 @@
 
 ## Ergebnisse
 
-| Backend | Embed Time | Chunks/s | RAM (Peak) | Search (avg) | Status |
+| Backend | Embed Time | Chunks/s | RAM Peak | Search | Status |
 |---|---|---|---|---|---|
-| **PyTorch CPU** (Baseline) | **1309s** (~22 Min) | 0.9 | 7.6 GB | 68.8ms | Stabil |
-| ONNX Runtime CPU | 1637s (~27 Min) | 0.7 | 31.3 GB | 25.0ms | Langsamer als PyTorch |
-| ONNX + DirectML (AMD GPU) | — | — | — | — | CRASH: "nicht genügend Speicherressourcen" |
+| **PyTorch CPU** (isoliert) | **1254s** (21 Min) | **0.9** | **7.6 GB** | **56ms** | **Stabil — Empfohlen** |
+| ONNX CPU (aapot/bge-m3-onnx) | 1637s (27 Min) | 0.7 | 31 GB | 25ms | Langsamer, 4x mehr RAM |
+| ONNX INT8 CPU (xenova/bge-m3) | >20 Min, abgebrochen | — | **39 GB** | — | OOM-Risiko, unbrauchbar |
+| ONNX + DirectML (FP32) | CRASH | — | — | — | Attention-Op nicht unterstützt |
+| ONNX INT8 + DirectML | CRASH | — | — | — | FusedMatMul "Falscher Parameter" |
 
 ## Analyse
 
-### PyTorch CPU (Baseline) — Empfohlen für jetzt
-- Stabil, vorhersagbar, 0.9 Chunks/s
-- 7.6 GB RAM ist hoch aber handhabbar auf 64 GB System
-- Suchzeit 68.8ms ist schnell genug
+### PyTorch CPU — Klarer Sieger
+- 1254s (21 Min) für Full Reindex, 0.9 Chunks/s
+- 7.6 GB RAM — handhabbar auf 64 GB System
+- 56ms Suchzeit pro Query
+- Stabil, vorhersagbar, keine Surprises
 
-### ONNX Runtime CPU — Nicht empfohlen
-- **Langsamer als PyTorch** (0.7 vs 0.9 Chunks/s = -22%)
-- **31 GB RAM** — das `aapot/bge-m3-onnx` Modell ist nicht optimiert
-- Einziger Vorteil: Suchzeit 25ms (37% schneller bei Single-Query)
-- Problem: Der ONNX-Export von BGE-M3 ist nicht performance-optimiert (kein Quantization, kein Graph-Optimization)
+### Alle ONNX-Varianten — Nicht empfehlenswert für BGE-M3
+BGE-M3 ist ein großes Modell (568M Parameter, 8192 Max Seq Length). Die verfügbaren ONNX-Exporte sind:
 
-### DirectML — Nicht nutzbar mit BGE-M3
-- BGE-M3 hat einen großen Attention-Layer (8192 Max Seq Length, 1024 Hidden)
-- DirectML Attention-Op kann den VRAM-Bedarf nicht allokieren
-- Error: `Für diesen Vorgang sind nicht genügend Speicherressourcen verfügbar`
-- **Auch mit 24 GB VRAM crasht es** — das liegt an DirectML's Speichermanagement, nicht am VRAM
+1. **aapot/bge-m3-onnx** (FP32, ~2.2 GB) — Funktioniert auf CPU, aber **langsamer** als PyTorch (0.7 vs 0.9 ch/s) und verbraucht **4x mehr RAM** (31 GB vs 7.6 GB). Kein Graph Optimization im Export.
+
+2. **xenova/bge-m3** (INT8, ~680 MB Datei) — Trotz kleinerer Datei **explodiert der RAM** auf 39 GB während der Inference. Der quantisierte Export ist nicht für Batch-Processing optimiert.
+
+3. **DirectML** — BGE-M3's Attention-Layer (`FusedMatMul`, `Attention` Ops) ist **nicht kompatibel** mit DirectML's Execution Provider. Crasht sowohl mit FP32 als auch INT8. Dies ist eine Limitation von DirectML, nicht von ONNX Runtime generell.
+
+### Warum ONNX hier versagt
+- BGE-M3 hat 8192 max seq length → große Attention-Matrizen
+- Die ONNX-Exporte sind nicht mit `optimum` graph-optimiert
+- DirectML unterstützt nicht alle Attention-Ops die BGE-M3 braucht
+- PyTorch nutzt intern optimierte C++/BLAS-Kernels die ONNX Runtime nicht hat
 
 ## Empfehlung
 
 ### Jetzt: PyTorch CPU beibehalten
-Das bestehende sentence-transformers Backend ist die stabilste und schnellste Option auf CPU. Kein Wechsel nötig.
+Kein Backend-Wechsel. PyTorch CPU ist stabil, am schnellsten, und verbraucht am wenigsten RAM. Der Full Reindex dauert 21 Min, aber Incremental ist 0.2s — für den Normalbetrieb kein Problem.
 
-### Für GPU-Beschleunigung: Kleineres Modell oder PyTorch ROCm
-1. **Kleineres ONNX-Modell** (z.B. `bge-small-en-v1.5`, 384 Dim) würde auf DirectML laufen — aber Qualitätsverlust
-2. **PyTorch + ROCm nativ auf Windows** (PyTorch 2.9.1 + ROCm 7.2.1) — sentence-transformers würde direkt GPU nutzen, kein ONNX-Export nötig
-3. **Quantisiertes BGE-M3 ONNX** (INT8) — könnte DirectML-kompatibel sein, bräuchte Custom-Export
+### Für GPU-Beschleunigung (Zukunft)
+1. **PyTorch + ROCm auf WSL2** — sentence-transformers direkt mit AMD GPU, kein ONNX nötig. Vielversprechendster Weg.
+2. **Kleineres Modell** auf DirectML — `multilingual-e5-small` (120 MB, 384 Dim) funktioniert auf DirectML, aber Qualitäts-Tradeoff. Nur sinnvoll wenn Full Reindex häufig nötig ist.
+3. **NVIDIA CUDA** — Für User mit NVIDIA GPU: `pip install torch --index-url https://download.pytorch.org/whl/cu124` → sentence-transformers nutzt CUDA automatisch, 5-10x Speedup.
 
-### Für die Community (NVIDIA)
-`onnxruntime-gpu` (CUDA) oder direkt sentence-transformers mit CUDA — "just works" und 5-10x schneller.
+### Config-Empfehlung für Mneme
+```toml
+[embedding]
+provider = "sentence-transformers"  # Nicht onnx — PyTorch ist schneller
+model = "BAAI/bge-m3"
+# backend wird ignoriert bei sentence-transformers (auto-detect CPU/CUDA)
+```
