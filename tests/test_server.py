@@ -314,3 +314,55 @@ def test_update_config_changes_value(server_with_vault):
     assert result["old_value"] == "10"   # default top_k is 10
     assert result["new_value"] == "42"
     mock_save.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# MCP Resources
+# ---------------------------------------------------------------------------
+
+def test_server_has_resources(tmp_path: Path):
+    """The MCP server must expose at least 3 resources."""
+    db_path = tmp_path / "test.db"
+    config = MnemeConfig(
+        vault=VaultConfig(path=str(tmp_path)),
+        database=DatabaseConfig(path=str(db_path)),
+    )
+
+    with patch("mneme.server.get_provider") as mock_get_provider:
+        mock_provider = MagicMock()
+        mock_provider.dimension.return_value = 16
+        mock_get_provider.return_value = mock_provider
+        server = create_server(config)
+
+    resources = server._resource_manager._resources
+    assert len(resources) >= 3
+    uris = set(resources.keys())
+    assert "mneme://vault/stats" in uris
+    assert "mneme://vault/tags" in uris
+    assert "mneme://vault/graph-summary" in uris
+
+
+# ---------------------------------------------------------------------------
+# MCP Prompts
+# ---------------------------------------------------------------------------
+
+def test_server_has_prompts(tmp_path: Path):
+    """The MCP server must expose at least 3 prompts."""
+    db_path = tmp_path / "test.db"
+    config = MnemeConfig(
+        vault=VaultConfig(path=str(tmp_path)),
+        database=DatabaseConfig(path=str(db_path)),
+    )
+
+    with patch("mneme.server.get_provider") as mock_get_provider:
+        mock_provider = MagicMock()
+        mock_provider.dimension.return_value = 16
+        mock_get_provider.return_value = mock_provider
+        server = create_server(config)
+
+    prompts = server._prompt_manager._prompts
+    assert len(prompts) >= 3
+    names = set(prompts.keys())
+    assert "research_topic" in names
+    assert "vault_review" in names
+    assert "find_connections" in names

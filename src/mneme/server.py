@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 import logging
 import time
 
@@ -344,5 +345,76 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
             report["near_duplicates"] = gardener.find_near_duplicates(threshold=similarity_threshold)
 
         return report
+
+    # ------------------------------------------------------------------
+    # MCP Resources — static vault metadata without tool-call overhead
+    # ------------------------------------------------------------------
+
+    @mcp.resource("mneme://vault/stats")
+    def vault_stats_resource() -> str:
+        """Current vault index statistics."""
+        stats = state["store"].get_stats(embedding_model=state["config"].embedding.model)
+        return json.dumps({
+            "total_notes": stats.total_notes,
+            "total_chunks": stats.total_chunks,
+            "last_indexed": stats.last_indexed,
+            "embedding_model": stats.embedding_model,
+            "db_size_mb": stats.db_size_mb,
+        }, indent=2)
+
+    @mcp.resource("mneme://vault/tags")
+    def vault_tags_resource() -> str:
+        """List of all unique tags in the vault."""
+        rows = state["store"]._conn.execute(
+            "SELECT DISTINCT tags FROM notes WHERE tags != '[]'"
+        ).fetchall()
+        all_tags: set[str] = set()
+        for row in rows:
+            tags = json.loads(row[0])
+            all_tags.update(tags)
+        return json.dumps(sorted(all_tags), indent=2)
+
+    @mcp.resource("mneme://vault/graph-summary")
+    def vault_graph_resource() -> str:
+        """Wikilink graph summary — most connected notes."""
+        centrality = state["store"].get_centrality_map()
+        top_10 = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:10]
+        return json.dumps([
+            {"path": path, "centrality": round(score, 3)}
+            for path, score in top_10
+        ], indent=2)
+
+    # ------------------------------------------------------------------
+    # MCP Prompts — predefined workflow templates
+    # ------------------------------------------------------------------
+
+    @mcp.prompt()
+    def research_topic(topic: str) -> str:
+        """Research a topic using vault knowledge. Searches for relevant notes and synthesizes findings."""
+        return f"""Recherchiere das Thema "{topic}" in meinem Vault.
+
+1. Nutze search_notes um relevante Notizen zu finden
+2. Nutze get_note_context für die wichtigsten Treffer um den Kontext zu verstehen
+3. Fasse zusammen: Was weiß mein Vault über dieses Thema?
+4. Identifiziere Wissenslücken: Was fehlt noch?"""
+
+    @mcp.prompt()
+    def vault_review() -> str:
+        """Run a comprehensive vault health check and suggest improvements."""
+        return """Führe einen Vault-Health-Check durch:
+
+1. Nutze vault_health um Probleme zu finden (Orphans, schwache Links, veraltete Notizen)
+2. Für die Top-3 Orphan-Notes: Nutze get_similar um Verlinkungsvorschläge zu machen
+3. Erstelle einen Bericht mit konkreten Handlungsempfehlungen"""
+
+    @mcp.prompt()
+    def find_connections(note_path: str) -> str:
+        """Discover hidden connections for a specific note."""
+        return f"""Finde versteckte Verbindungen für die Notiz "{note_path}":
+
+1. Nutze get_note_context um bestehende Verbindungen zu sehen
+2. Nutze search_notes mit Schlüsselwörtern aus der Notiz um verwandte Inhalte zu finden
+3. Vergleiche: Welche semantisch ähnlichen Notizen sind NICHT verlinkt?
+4. Schlage konkrete [[Wikilinks]] vor die hinzugefügt werden sollten"""
 
     return mcp

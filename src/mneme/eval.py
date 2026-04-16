@@ -69,6 +69,21 @@ def load_golden_dataset(path: Path) -> list[dict]:
     return data
 
 
+def _normalize(path: str) -> str:
+    """Normalize path for comparison: forward slashes, lowercase, strip .md."""
+    p = path.replace("\\", "/").lower()
+    if p.endswith(".md"):
+        p = p[:-3]
+    return p
+
+
+def _paths_match(expected: str, retrieved: str) -> bool:
+    """Check if expected context matches a retrieved path (partial, normalized)."""
+    exp = _normalize(expected)
+    ctx = _normalize(retrieved)
+    return exp in ctx or ctx in exp
+
+
 def _compute_mrr(expected: list[str], retrieved: list[str]) -> float:
     """Compute the Reciprocal Rank for one question.
 
@@ -77,8 +92,7 @@ def _compute_mrr(expected: list[str], retrieved: list[str]) -> float:
     """
     for rank, ctx in enumerate(retrieved, start=1):
         for exp in expected:
-            # Partial match: expected_context is a substring of the note_path
-            if exp in ctx or ctx in exp:
+            if _paths_match(exp, ctx):
                 return 1.0 / rank
     return 0.0
 
@@ -88,7 +102,7 @@ def _has_hit(expected: list[str], retrieved: list[str], top_k: int) -> bool:
     subset = retrieved[:top_k]
     for ctx in subset:
         for exp in expected:
-            if exp in ctx or ctx in exp:
+            if _paths_match(exp, ctx):
                 return True
     return False
 
