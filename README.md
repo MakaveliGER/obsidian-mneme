@@ -4,15 +4,27 @@
 
 # Mneme
 
-Local MCP server for semantic Obsidian vault search. Headless RAG — Mneme indexes and searches your vault, Claude does the reasoning.
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
+![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
+
+**Headless RAG / Retrieval Sidecar for Obsidian.** Mneme indexiert und durchsucht deinen Vault — Claude macht das Reasoning. Läuft vollständig lokal, keine API Keys, kein Cloud-Zwang.
+
+---
 
 ## Features
 
-- **Hybrid Search** — Vector (BGE-M3) + BM25 keyword search with Reciprocal Rank Fusion
-- **6 MCP Tools** — search_notes, get_similar, vault_stats, reindex, get_config, update_config
-- **Heading-aware Chunking** — Semantic context injection (title, folder, tags per chunk)
-- **File Watcher** — Automatic re-indexing on vault changes
-- **Zero Cloud** — Everything runs locally, no API keys needed
+- **Hybrid Search** — Vector (BGE-M3, 1024-dim, multilingual) + BM25 Keyword Search mit Reciprocal Rank Fusion (RRF)
+- **8 MCP Tools** — `search_notes`, `get_similar`, `get_note_context`, `vault_stats`, `vault_health`, `reindex`, `get_config`, `update_config`
+- **GraphRAG** — Wikilink-Graph mit 348+ Links, BFS-Traversal für kontextuelle Nachbarschaft
+- **GARS-Scoring** — Graph-Aware Retrieval Scoring: gut vernetzte Notizen ranken höher
+- **CrossEncoder Reranking** — opt-in, `BAAI/bge-reranker-v2-m3`, konfigurierbarer Score-Threshold
+- **Vault Health / Gardener** — erkennt Orphan Notes, schwache Links, Stale Notes und Duplikate
+- **Auto-Search** — Modi `off` / `smart` / `always` für automatische Context-Injection vor Tool-Calls
+- **Heading-aware Chunking** — Semantic Context Injection (Titel, Ordner, Tags pro Chunk)
+- **File Watcher** — automatische Re-Indexierung bei Vault-Änderungen via Watchdog
+- **Zero Cloud** — alles lokal auf CPU, keine API Keys, keine Abhängigkeiten von externen Services
+
+---
 
 ## Quick Start
 
@@ -23,13 +35,15 @@ pip install mneme
 # Setup (interactive wizard)
 mneme setup
 
-# Or with uvx (no install needed)
-uvx mneme setup
+# Auto-Search konfigurieren (empfohlen)
+mneme auto-search smart
 ```
+
+---
 
 ## Usage with Claudian
 
-Add to your vault's `.claude/mcp.json`:
+Füge das zur `.claude/mcp.json` deines Projekts oder Vaults hinzu:
 
 ```json
 {
@@ -42,26 +56,112 @@ Add to your vault's `.claude/mcp.json`:
 }
 ```
 
-Then in Claudian: `@mneme search_notes "your query"`
+**Beispiel-Queries:**
+
+- `@mneme search_notes "Zettelkasten Methode"` — semantische Suche
+- `@mneme get_similar "Notiz-Titel"` — ähnliche Notizen
+- `@mneme get_note_context "Notiz-Titel"` — Kontext inkl. Graph-Nachbarschaft
+- `@mneme vault_health` — Vault-Diagnose (Orphans, Duplikate, Stale Notes)
+- `@mneme vault_stats` — Index-Statistiken
+
+---
 
 ## CLI Commands
 
-| Command | Description |
+| Command | Beschreibung |
 |---|---|
-| `mneme setup` | Interactive setup wizard |
-| `mneme serve` | Start MCP server (stdio) |
-| `mneme reindex` | Re-index vault (incremental) |
-| `mneme reindex --full` | Full re-index |
-| `mneme status` | Show index statistics |
+| `mneme setup` | Interaktiver Setup-Wizard |
+| `mneme serve` | MCP Server starten (stdio) |
+| `mneme reindex` | Inkrementelle Re-Indexierung |
+| `mneme reindex --full` | Vollständige Re-Indexierung |
+| `mneme status` | Index-Statistiken anzeigen |
+| `mneme auto-search off` | Auto-Search deaktivieren |
+| `mneme auto-search smart` | Auto-Search: nur bei relevanten Queries |
+| `mneme auto-search always` | Auto-Search: immer aktiv |
+| `mneme hook-search` | Intern — PreToolUse Hook für Auto-Search |
+| `mneme install-hooks` | Claude Code Hooks installieren |
+
+---
+
+## Configuration
+
+`mneme.toml` (wird bei `mneme setup` erstellt):
+
+```toml
+[vault]
+path = "/path/to/vault"
+
+[embedding]
+provider = "sentence-transformers"
+model = "BAAI/bge-m3"
+
+[search]
+vector_weight = 0.6
+bm25_weight = 0.4
+top_k = 10
+
+[reranking]
+enabled = false
+model = "BAAI/bge-reranker-v2-m3"
+threshold = 0.3
+
+[scoring]
+gars_enabled = false
+graph_weight = 0.3
+
+[auto_search]
+mode = "smart"
+
+[health]
+exclude_patterns = ["Newsletter/**", "Daily Notes/**"]
+```
+
+---
+
+## Architecture
+
+```
+Obsidian Vault (.md)
+        │
+        ▼
+   ┌─────────┐     Watchdog
+   │ Indexer  │◄──────────── File System Events
+   └────┬─────┘
+        │ parse, chunk, embed (BGE-M3)
+        ▼
+   ┌─────────┐
+   │  Store   │  SQLite + sqlite-vec + FTS5 + Wikilink Graph
+   └────┬─────┘
+        │
+        ▼
+   ┌─────────┐
+   │ Search   │  Hybrid → RRF → [Reranking] → [GARS]
+   └────┬─────┘
+        │
+        ▼
+   ┌──────────┐
+   │ MCP      │  FastMCP (stdio) → Claudian
+   │ Server   │  8 Tools
+   └──────────┘
+```
+
+---
 
 ## Tech Stack
 
-- **Embeddings**: BGE-M3 via sentence-transformers (1024 dim, multilingual)
-- **Vector Store**: SQLite + sqlite-vec
-- **Keyword Search**: SQLite FTS5 (BM25)
-- **Fusion**: Reciprocal Rank Fusion (RRF)
-- **MCP**: FastMCP (stdio transport)
-- **Config**: TOML + Pydantic Settings
+| Komponente | Technologie |
+|---|---|
+| Embeddings | BGE-M3 via sentence-transformers (1024-dim, multilingual) |
+| Vector Store | SQLite + sqlite-vec |
+| Keyword Search | SQLite FTS5 (BM25) |
+| Fusion | Reciprocal Rank Fusion (RRF) |
+| Graph | Wikilink-Graph, BFS-Traversal |
+| Reranking | BAAI/bge-reranker-v2-m3 (opt-in, CPU) |
+| MCP | FastMCP (stdio transport) |
+| Config | TOML + Pydantic Settings |
+| File Watching | Watchdog |
+
+---
 
 ## License
 
