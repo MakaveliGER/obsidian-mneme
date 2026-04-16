@@ -1,0 +1,202 @@
+"""Tests for mneme.search — rrf_fusion and SearchEngine."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+from mneme.store import SearchResult
+from mneme.search import rrf_fusion, SearchEngine
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def make_result(chunk_id: int, note_path: str = "note.md", score: float = 1.0) -> SearchResult:
+    return SearchResult(
+        chunk_id=chunk_id,
+        note_path=note_path,
+        note_title="Title",
+        heading_path="",
+        content="content",
+        score=score,
+        tags=[],
+    )
+
+
+# ---------------------------------------------------------------------------
+# rrf_fusion tests
+# ---------------------------------------------------------------------------
+
+def test_rrf_fusion_both_lists():
+    """A chunk that appears in both lists must receive a higher RRF score
+    than a chunk that appears in only one list."""
+    shared = make_result(chunk_id=1)
+    only_vector = make_result(chunk_id=2)
+    only_bm25 = make_result(chunk_id=3)
+
+    vector_list = [shared, only_vector]
+    bm25_list = [shared, only_bm25]
+
+    fused = rrf_fusion([vector_list, bm25_list])
+
+    scores = {r.chunk_id: r.score for r in fused}
+    assert scores[1] > scores[2], "shared chunk must outscore vector-only chunk"
+    assert scores[1] > scores[3], "shared chunk must outscore bm25-only chunk"
+
+
+def test_rrf_fusion_order():
+    """Results must be sorted by RRF score descending."""
+    r1 = make_result(chunk_id=1)
+    r2 = make_result(chunk_id=2)
+    r3 = make_result(chunk_id=3)
+
+    list_a = [r1, r2]
+    list_b = [r1, r3]
+
+    fused = rrf_fusion([list_a, list_b])
+
+    assert fused[0].chunk_id == 1, "highest-scoring chunk must be first"
+    for i in range(len(fused) - 1):
+        assert fused[i].score >= fused[i + 1].score, "scores must be non-increasing"
+
+
+def test_rrf_fusion_empty_lists():
+    """Empty input → empty output."""
+    assert rrf_fusion([]) == []
+    assert rrf_fusion([[], []]) == []
+
+
+def test_rrf_fusion_single_list():
+    """Single list → RRF scores reflect rank order (rank 1 > rank 2 > …)."""
+    results = [make_result(i) for i in range(1, 5)]
+    fused = rrf_fusion([results])
+
+    assert len(fused) == 4
+    for i in range(len(fused) - 1):
+        assert fused[i].score > fused[i + 1].score, (
+            f"rank {i+1} score must be greater than rank {i+2} score"
+        )
+    expected_first = 1.0 / (60 + 1)
+    assert abs(fused[0].score - expected_first) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# SearchEngine tests
+# ---------------------------------------------------------------------------
+
+def _make_engine(vector_results=None, bm25_results=None, top_k=5):
+    """Build a SearchEngine backed by mocked Store and EmbeddingProvider."""
+    store = MagicMock()
+    store.vector_search.return_value = vector_results or []
+    store.bm25_search.return_value = bm25_results or []
+
+    provider = MagicMock()
+    provider.embed.return_value = [[0.1, 0.2, 0.3]]
+
+    config = MagicMock()
+    config.top_k = top_k
+
+    return SearchEngine(store=store, embedding_provider=provider, config=config)
+
+
+def test_search_end_to_end():
+    """search() must call both vector_search and bm25_search and return results."""
+    vec_results = [make_result(1), make_result(2)]
+    bm25_results = [make_result(2), make_result(3)]
+
+    engine = _make_engine(vector_results=vec_results, bm25_results=bm25_results)
+    results = engine.search("test query")
+
+    assert len(results) > 0, "search must return at least one result"
+    assert results[0].chunk_id == 2
+
+    engine.store.vector_search.assert_called_once()
+    engine.store.bm25_search.assert_called_once()
+    engine.embedding_provider.embed.assert_called_once_with(["test query"])
+
+
+def test_search_respects_top_k():
+    """search() must return at most top_k results."""
+    vec_results = [make_result(i) for i in range(1, 11)]
+    bm25_results = [make_result(i) for i in range(6, 16)]
+
+    engine = _make_engine(vector_results=vec_results, bm25_results=bm25_results, top_k=4)
+    results = engine.search("query", top_k=4)
+
+    assert len(results) <= 4
+
+
+def test_search_tag_postfilter():
+    """Vector results without matching tags must be filtered out."""
+    tagged = SearchResult(
+        chunk_id=1, note_path="a.md", note_title="A",
+        heading_path="", content="x", score=1.0, tags=["python"],
+    )
+    untagged = SearchResult(
+        chunk_id=2, note_path="b.md", note_title="B",
+        heading_path="", content="y", score=0.9, tags=["java"],
+    )
+
+    engine = _make_engine(vector_results=[tagged, untagged], bm25_results=[])
+    results = engine.search("query", tags=["python"])
+
+    chunk_ids = {r.chunk_id for r in results}
+    assert 1 in chunk_ids, "tagged result must survive post-filter"
+    assert 2 not in chunk_ids, "untagged result must be filtered out"
+
+
+def test_search_folder_postfilter():
+    """Vector results not matching any folder prefix must be filtered out."""
+    in_folder = make_result(chunk_id=10, note_path="projects/foo.md")
+    out_folder = make_result(chunk_id=11, note_path="archive/bar.md")
+
+    engine = _make_engine(vector_results=[in_folder, out_folder], bm25_results=[])
+    results = engine.search("query", folders=["projects/"])
+
+    chunk_ids = {r.chunk_id for r in results}
+    assert 10 in chunk_ids
+    assert 11 not in chunk_ids
+
+
+# ---------------------------------------------------------------------------
+# get_similar tests
+# ---------------------------------------------------------------------------
+
+def test_get_similar_filters_own_note():
+    """get_similar must exclude the queried note from results."""
+    own_path = "notes/target.md"
+    own_result = make_result(chunk_id=99, note_path=own_path)
+    other_result = make_result(chunk_id=1, note_path="notes/other.md")
+
+    store = MagicMock()
+    store.get_all_chunk_embeddings_for_note.return_value = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+    ]
+    store.vector_search.return_value = [own_result, other_result]
+
+    provider = MagicMock()
+    config = MagicMock()
+    config.top_k = 5
+
+    engine = SearchEngine(store=store, embedding_provider=provider, config=config)
+    results = engine.get_similar(own_path, top_k=5)
+
+    paths = {r.note_path for r in results}
+    assert own_path not in paths, "own note must be filtered from get_similar results"
+    assert "notes/other.md" in paths
+
+
+def test_get_similar_empty_when_no_embeddings():
+    """get_similar must return [] when no chunks exist for the path."""
+    store = MagicMock()
+    store.get_all_chunk_embeddings_for_note.return_value = []
+
+    engine = SearchEngine(
+        store=store,
+        embedding_provider=MagicMock(),
+        config=MagicMock(),
+    )
+    assert engine.get_similar("nonexistent.md") == []
+    store.vector_search.assert_not_called()
