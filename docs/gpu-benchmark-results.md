@@ -14,7 +14,7 @@
 | ONNX INT8 CPU (xenova/bge-m3) | >20 Min, abgebrochen | — | 39 GB | — | OOM-Risiko |
 | ONNX + DirectML (FP32) | CRASH | — | — | — | Attention-Op nicht unterstützt |
 | ONNX INT8 + DirectML | CRASH | — | — | — | FusedMatMul "Falscher Parameter" |
-| PyTorch + ROCm (Python 3.12) | **nicht getestet** | — | — | — | Segfault — HIP-Treiber fehlt |
+| **PyTorch ROCm GPU (RX 7900 XTX)** | **108s (1.8 Min)** | **10.7** | **12.8 GB** | **209ms** | **9.5x Speedup!** |
 
 ## Analyse
 
@@ -49,23 +49,27 @@ BGE-M3 ist ein großes Modell (568M Parameter, 8192 Max Seq Length). Die verfüg
 ### Nächster Schritt: PyTorch + ROCm (Python 3.12)
 AMD ROCm 7.2.1 auf Windows unterstützt die RX 7900 XTX offiziell. Erwarteter Speedup: 5-15x.
 
-**Status:** Python-Packages installierbar, aber **Segfault bei GPU-Init** weil der AMD HIP SDK Treiber fehlt. PyTorch importiert und erkennt `HIP 7.2` — aber `torch.cuda.is_available()` crasht.
+**Status:** FUNKTIONIERT! 9.5x Speedup gemessen.
 
-**Was André machen muss (einmalig):**
-1. AMD Software PRO Edition installieren (nicht Standard-Adrenalin) — enthält HIP Runtime
-2. Oder: HIP SDK separat von https://rocm.docs.amd.com/projects/install-on-windows/ installieren
-3. Dann: `hipconfig.exe` muss im PATH sein
+**Voraussetzungen:**
+1. HIP SDK installieren: https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html (kein PRO-Treiber nötig)
+2. Python 3.12
 
-**Danach Installation:**
+**Installation (getestet, funktioniert):**
 ```bash
 uv venv .venv-rocm --python 3.12
-pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm-7.2.1.tar.gz
-pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_core-7.2.1-py3-none-win_amd64.whl
-pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_devel-7.2.1-py3-none-win_amd64.whl
-pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_libraries_custom-7.2.1-py3-none-win_amd64.whl
-pip install --no-deps https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torch-2.9.1+rocm7.2.1-cp312-cp312-win_amd64.whl
-pip install sentence-transformers
+# ROCm SDK + PyTorch passend zur HIP SDK Version (7.1.1 für HIP 7.1)
+uv pip install --python .venv-rocm/Scripts/python.exe --no-deps \
+  https://repo.radeon.com/rocm/windows/rocm-rel-7.1.1/rocm_sdk_core-0.1.dev0-py3-none-win_amd64.whl \
+  https://repo.radeon.com/rocm/windows/rocm-rel-7.1.1/rocm_sdk_devel-0.1.dev0-py3-none-win_amd64.whl \
+  https://repo.radeon.com/rocm/windows/rocm-rel-7.1.1/rocm_sdk_libraries_custom-0.1.dev0-py3-none-win_amd64.whl \
+  https://repo.radeon.com/rocm/windows/rocm-rel-7.1.1/torch-2.9.0+rocmsdk20251116-cp312-cp312-win_amd64.whl
+uv pip install --python .venv-rocm/Scripts/python.exe sentence-transformers
 ```
+
+**Hinweis:** ROCm SDK Version muss zur HIP SDK Version passen (7.1.1 für HIP 7.1, 7.2.1 für HIP 7.2).
+SDPA Attention ist auf AMD noch experimentell — funktioniert aber korrekt.
+VRAM wird als 43 GB reported (shared memory model bei AMD).
 
 ### Für NVIDIA-User
 ```bash
