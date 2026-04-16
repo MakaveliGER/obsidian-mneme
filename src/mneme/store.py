@@ -417,9 +417,11 @@ class Store:
         full_path_map: dict[str, int] = {}
 
         for note_id, path in rows:
-            full_key = path[:-3] if path.endswith(".md") else path
+            # Normalize to forward slashes (wikilinks always use /)
+            normalized = path.replace("\\", "/")
+            full_key = normalized[:-3] if normalized.endswith(".md") else normalized
             full_path_map[full_key] = note_id
-            base = PurePosixPath(path).stem
+            base = PurePosixPath(normalized).stem
             basename_to_ids[base].append(note_id)
 
         alias_map: dict[str, int] = {}
