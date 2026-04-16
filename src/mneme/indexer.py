@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import fnmatch
+import json
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from mneme.config import MnemeConfig
+
+logger = logging.getLogger(__name__)
 from mneme.embeddings.base import EmbeddingProvider
 from mneme.parser import chunk_note, parse_note
 from mneme.store import ChunkData, Store
@@ -75,19 +79,34 @@ class Indexer:
 
         indexed = 0
         skipped = 0
+        errors = 0
         vault_paths: set[str] = set()
-        # Collect (note_id, wikilinks) for link resolution pass
         notes_for_link_resolution: list[tuple[int, list[str]]] = []
 
+        # Batch-load all hashes for incremental mode (avoids N separate SELECTs)
+        hash_cache: dict[str, tuple[int, str, list[str]]] = {}
+        if not full:
+            for row in self._store._conn.execute(
+                "SELECT id, path, content_hash, wikilinks FROM notes"
+            ).fetchall():
+                wl = json.loads(row[3]) if row[3] else []
+                hash_cache[row[1]] = (row[0], row[2], wl)
+
         for file_path in unique_files:
-            parsed = parse_note(file_path, vault_root)
+            try:
+                parsed = parse_note(file_path, vault_root)
+            except Exception as e:
+                logger.warning("Skipping %s: %s", file_path, e)
+                errors += 1
+                continue
+
             vault_paths.add(parsed.path)
 
             if not full:
-                existing = self._store.get_note_by_path(parsed.path)
-                if existing and existing["content_hash"] == parsed.content_hash:
+                cached = hash_cache.get(parsed.path)
+                if cached and cached[1] == parsed.content_hash:
                     skipped += 1
-                    notes_for_link_resolution.append((existing["id"], existing["wikilinks"]))
+                    notes_for_link_resolution.append((cached[0], cached[2]))
                     continue
 
             note_id = self._index_parsed(parsed)
@@ -122,8 +141,15 @@ class Indexer:
         Returns:
             True if the file was (re-)indexed, False if it was unchanged.
         """
+        if not file_path.exists():
+            return False
+
         vault_root = self._config.vault_path
-        parsed = parse_note(file_path, vault_root)
+        try:
+            parsed = parse_note(file_path, vault_root)
+        except Exception as e:
+            logger.warning("Skipping %s: %s", file_path, e)
+            return False
 
         existing = self._store.get_note_by_path(parsed.path)
         if existing and existing["content_hash"] == parsed.content_hash:

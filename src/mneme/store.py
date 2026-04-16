@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import struct
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -46,18 +50,25 @@ class Store:
     def __init__(self, db_path: Path, embedding_dim: int) -> None:
         self.db_path = db_path
         self.embedding_dim = embedding_dim
+        self._lock = threading.Lock()
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(db_path))
+        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._load_extensions()
         self._create_schema()
 
     def _load_extensions(self) -> None:
-        self._conn.enable_load_extension(True)
-        import sqlite_vec
-        sqlite_vec.load(self._conn)
-        self._conn.enable_load_extension(False)
+        try:
+            self._conn.enable_load_extension(True)
+            import sqlite_vec
+            sqlite_vec.load(self._conn)
+            self._conn.enable_load_extension(False)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load sqlite-vec extension: {e}. "
+                "Install sqlite-vec: pip install sqlite-vec"
+            ) from e
 
     def _create_schema(self) -> None:
         cur = self._conn.cursor()
@@ -143,90 +154,96 @@ class Store:
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).isoformat()
-        cur = self._conn.execute(
-            """INSERT INTO notes (path, title, content_hash, frontmatter, tags, wikilinks, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(path) DO UPDATE SET
-                   title=excluded.title,
-                   content_hash=excluded.content_hash,
-                   frontmatter=excluded.frontmatter,
-                   tags=excluded.tags,
-                   wikilinks=excluded.wikilinks,
-                   updated_at=excluded.updated_at""",
-            (
-                path,
-                title,
-                content_hash,
-                json.dumps(frontmatter, default=str),
-                json.dumps(tags),
-                json.dumps(wikilinks),
-                now,
-            ),
-        )
-        # Get the note_id (works for both insert and update)
-        row = self._conn.execute(
-            "SELECT id FROM notes WHERE path = ?", (path,)
-        ).fetchone()
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO notes (path, title, content_hash, frontmatter, tags, wikilinks, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(path) DO UPDATE SET
+                       title=excluded.title,
+                       content_hash=excluded.content_hash,
+                       frontmatter=excluded.frontmatter,
+                       tags=excluded.tags,
+                       wikilinks=excluded.wikilinks,
+                       updated_at=excluded.updated_at""",
+                (
+                    path,
+                    title,
+                    content_hash,
+                    json.dumps(frontmatter, default=str),
+                    json.dumps(tags),
+                    json.dumps(wikilinks),
+                    now,
+                ),
+            )
+            row = self._conn.execute(
+                "SELECT id FROM notes WHERE path = ?", (path,)
+            ).fetchone()
+            self._conn.commit()
         return row[0]
 
     def upsert_chunks(self, note_id: int, chunks: list[ChunkData]) -> None:
-        """Delete old chunks for note_id, insert new ones with embeddings."""
-        cur = self._conn.cursor()
+        """Delete old chunks for note_id, insert new ones with embeddings.
 
-        # Get existing chunk IDs for vec cleanup
-        old_ids = [
-            r[0]
-            for r in cur.execute(
-                "SELECT id FROM chunks WHERE note_id = ?", (note_id,)
-            ).fetchall()
-        ]
+        Runs in a single transaction — crash-safe.
+        """
+        with self._lock:
+            cur = self._conn.cursor()
+            try:
+                # Get existing chunk IDs for vec cleanup
+                old_ids = [
+                    r[0]
+                    for r in cur.execute(
+                        "SELECT id FROM chunks WHERE note_id = ?", (note_id,)
+                    ).fetchall()
+                ]
 
-        # Delete from vec table first (no CASCADE from chunks)
-        for old_id in old_ids:
-            cur.execute("DELETE FROM chunks_vec WHERE chunk_id = ?", (old_id,))
+                # Delete from vec table first (no CASCADE from chunks)
+                for old_id in old_ids:
+                    cur.execute("DELETE FROM chunks_vec WHERE chunk_id = ?", (old_id,))
 
-        # Delete old chunks (triggers handle FTS5 cleanup)
-        cur.execute("DELETE FROM chunks WHERE note_id = ?", (note_id,))
+                # Delete old chunks (triggers handle FTS5 cleanup)
+                cur.execute("DELETE FROM chunks WHERE note_id = ?", (note_id,))
 
-        # Insert new chunks
-        for chunk in chunks:
-            cur.execute(
-                """INSERT INTO chunks (note_id, content, heading_path, chunk_index)
-                   VALUES (?, ?, ?, ?)""",
-                (note_id, chunk.content, chunk.heading_path, chunk.chunk_index),
-            )
-            chunk_id = cur.lastrowid
+                # Insert new chunks
+                for chunk in chunks:
+                    cur.execute(
+                        """INSERT INTO chunks (note_id, content, heading_path, chunk_index)
+                           VALUES (?, ?, ?, ?)""",
+                        (note_id, chunk.content, chunk.heading_path, chunk.chunk_index),
+                    )
+                    chunk_id = cur.lastrowid
+                    cur.execute(
+                        "INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)",
+                        (chunk_id, _serialize_float_vec(chunk.embedding)),
+                    )
 
-            # Insert embedding into vec table
-            cur.execute(
-                "INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)",
-                (chunk_id, _serialize_float_vec(chunk.embedding)),
-            )
-
-        self._conn.commit()
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def delete_note(self, path: str) -> bool:
         """Delete a note and all its chunks. Returns True if note existed."""
-        cur = self._conn.cursor()
-        row = cur.execute("SELECT id FROM notes WHERE path = ?", (path,)).fetchone()
-        if not row:
-            return False
+        with self._lock:
+            cur = self._conn.cursor()
+            row = cur.execute("SELECT id FROM notes WHERE path = ?", (path,)).fetchone()
+            if not row:
+                return False
 
-        note_id = row[0]
+            note_id = row[0]
 
-        # Clean up vec table (no CASCADE)
-        chunk_ids = [
-            r[0]
-            for r in cur.execute(
-                "SELECT id FROM chunks WHERE note_id = ?", (note_id,)
-            ).fetchall()
-        ]
-        for cid in chunk_ids:
-            cur.execute("DELETE FROM chunks_vec WHERE chunk_id = ?", (cid,))
+            # Clean up vec table (no CASCADE)
+            chunk_ids = [
+                r[0]
+                for r in cur.execute(
+                    "SELECT id FROM chunks WHERE note_id = ?", (note_id,)
+                ).fetchall()
+            ]
+            for cid in chunk_ids:
+                cur.execute("DELETE FROM chunks_vec WHERE chunk_id = ?", (cid,))
 
-        # Delete note (CASCADE deletes chunks, triggers clean FTS5)
-        cur.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-        self._conn.commit()
+            cur.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+            self._conn.commit()
         return True
 
     def get_note_by_path(self, path: str) -> dict | None:
@@ -354,7 +371,7 @@ class Store:
                 note_title=row[4],
                 heading_path=row[2],
                 content=row[1],
-                score=abs(row[6]),  # bm25() returns negative values, lower = better
+                score=abs(row[6]),  # bm25() returns negative; abs() makes higher = better
                 tags=json.loads(row[5]) if row[5] else [],
             ))
         return results
@@ -459,20 +476,21 @@ class Store:
         self, note_id: int, wikilinks: list[str], alias_map: dict[str, int]
     ) -> int:
         """Resolve wikilinks and write to links table. Returns resolved count."""
-        cur = self._conn.cursor()
-        cur.execute("DELETE FROM links WHERE source_id = ?", (note_id,))
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute("DELETE FROM links WHERE source_id = ?", (note_id,))
 
-        resolved = 0
-        for wikilink in wikilinks:
-            target_id = alias_map.get(wikilink)
-            if target_id is not None and target_id != note_id:
-                cur.execute(
-                    "INSERT OR IGNORE INTO links (source_id, target_id) VALUES (?, ?)",
-                    (note_id, target_id),
-                )
-                resolved += 1
+            resolved = 0
+            for wikilink in wikilinks:
+                target_id = alias_map.get(wikilink)
+                if target_id is not None and target_id != note_id:
+                    cur.execute(
+                        "INSERT OR IGNORE INTO links (source_id, target_id) VALUES (?, ?)",
+                        (note_id, target_id),
+                    )
+                    resolved += 1
 
-        self._conn.commit()
+            self._conn.commit()
         return resolved
 
     def get_linked_notes(self, note_id: int) -> list[dict]:

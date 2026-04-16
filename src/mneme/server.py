@@ -1,7 +1,8 @@
-"""FastMCP server with 6 tools for semantic vault search."""
+"""FastMCP server with 8 tools for semantic vault search."""
 
 from __future__ import annotations
 
+import atexit
 import logging
 import time
 
@@ -59,16 +60,29 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         state["gardener"] = gardener
         state["config"] = config
 
-        # Start file watcher
+        # Start file watcher with shutdown hook
         if config.vault.path:
             watcher = VaultWatcher(config.vault_path, indexer, config)
             watcher.start()
             state["watcher"] = watcher
+            atexit.register(watcher.stop)
 
         logger.info("Mneme ready (%.1fs)", time.time() - t0)
 
     # Initialize eagerly — block until model is loaded
-    _initialize()
+    try:
+        _initialize()
+    except Exception as e:
+        logger.error("Mneme initialization failed: %s", e)
+        state["init_error"] = str(e)
+
+    def _check_init() -> dict | None:
+        """Return error dict if server failed to initialize, else None."""
+        if "init_error" in state:
+            return {"error": f"Server not initialized: {state['init_error']}"}
+        if "store" not in state:
+            return {"error": "Server not initialized"}
+        return None
 
     @mcp.tool()
     def search_notes(
@@ -90,6 +104,9 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Search results with path, title, content, score, and tags.
         """
+        err = _check_init()
+        if err:
+            return err
         start = time.monotonic()
         results = state["search"].search(
             query=query,
@@ -216,6 +233,8 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
             Indexing results with counts of indexed, skipped, and deleted notes.
         """
         result = state["indexer"].index_vault(full=full)
+        # Invalidate centrality cache after reindex (graph may have changed)
+        state["search"]._centrality_map = None
         return {
             "indexed": result.indexed,
             "skipped": result.skipped,

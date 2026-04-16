@@ -39,23 +39,24 @@ def _make_reranker_with_mock(scores: list[float], threshold: float = 0.3) -> tup
 # ---------------------------------------------------------------------------
 
 def test_rerank_filters_below_threshold():
-    """Results whose CrossEncoder score < threshold must be removed."""
+    """Results whose normalized score < threshold must be removed."""
     results = [make_result(1), make_result(2), make_result(3)]
-    # scores: 1 above, 2 below, 3 above
-    reranker, _ = _make_reranker_with_mock([0.8, 0.1, 0.5], threshold=0.3)
+    # Raw logits: sigmoid(2.0)=0.88, sigmoid(-3.0)=0.047, sigmoid(0.5)=0.62
+    reranker, _ = _make_reranker_with_mock([2.0, -3.0, 0.5], threshold=0.3)
 
     output = reranker.rerank("query", results, top_k=10)
 
     chunk_ids = {r.chunk_id for r in output}
-    assert 1 in chunk_ids, "score 0.8 >= threshold — must survive"
-    assert 2 not in chunk_ids, "score 0.1 < threshold — must be filtered"
-    assert 3 in chunk_ids, "score 0.5 >= threshold — must survive"
+    assert 1 in chunk_ids, "sigmoid(2.0)=0.88 >= threshold — must survive"
+    assert 2 not in chunk_ids, "sigmoid(-3.0)=0.047 < threshold — must be filtered"
+    assert 3 in chunk_ids, "sigmoid(0.5)=0.62 >= threshold — must survive"
 
 
 def test_rerank_sorts_by_score():
-    """Results must be sorted by CrossEncoder score descending."""
+    """Results must be sorted by normalized score descending."""
     results = [make_result(1), make_result(2), make_result(3)]
-    reranker, _ = _make_reranker_with_mock([0.4, 0.9, 0.6], threshold=0.3)
+    # Raw logits: sigmoid(-0.5)=0.38, sigmoid(3.0)=0.95, sigmoid(1.0)=0.73
+    reranker, _ = _make_reranker_with_mock([-0.5, 3.0, 1.0], threshold=0.3)
 
     output = reranker.rerank("query", results, top_k=10)
 
@@ -68,7 +69,8 @@ def test_rerank_sorts_by_score():
 def test_rerank_respects_top_k():
     """rerank() must return at most top_k results."""
     results = [make_result(i) for i in range(1, 8)]
-    scores = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.35]
+    # All logits positive → sigmoid > 0.5 → all above threshold 0.3
+    scores = [3.0, 2.5, 2.0, 1.5, 1.0, 0.5, 0.2]
     reranker, _ = _make_reranker_with_mock(scores, threshold=0.3)
 
     output = reranker.rerank("query", results, top_k=3)
@@ -87,14 +89,18 @@ def test_rerank_empty_input():
 
 
 def test_rerank_score_overwritten():
-    """Returned SearchResults must carry the CrossEncoder score, not the original RRF score."""
+    """Returned SearchResults must carry the normalized score, not the original RRF score."""
+    import math
     results = [make_result(1, score=0.016), make_result(2, score=0.015)]
-    reranker, _ = _make_reranker_with_mock([0.75, 0.55], threshold=0.3)
+    # Raw logits: sigmoid(2.0)≈0.88, sigmoid(1.0)≈0.73
+    reranker, _ = _make_reranker_with_mock([2.0, 1.0], threshold=0.3)
 
     output = reranker.rerank("query", results, top_k=10)
 
-    assert abs(output[0].score - 0.75) < 1e-6
-    assert abs(output[1].score - 0.55) < 1e-6
+    expected_0 = 1.0 / (1.0 + math.exp(-2.0))
+    expected_1 = 1.0 / (1.0 + math.exp(-1.0))
+    assert abs(output[0].score - expected_0) < 1e-6
+    assert abs(output[1].score - expected_1) < 1e-6
 
 
 # ---------------------------------------------------------------------------

@@ -157,12 +157,9 @@ class SearchEngine:
         if not embeddings:
             return []
 
-        dim = len(embeddings[0])
-        avg_embedding = [
-            sum(e[i] for e in embeddings) / len(embeddings)
-            for i in range(dim)
-        ]
+        import numpy as np
+        avg_embedding = np.mean(embeddings, axis=0).tolist()
 
-        candidates = self.store.vector_search(avg_embedding, top_k=top_k + 5)
+        candidates = self.store.vector_search(avg_embedding, top_k=top_k * 3)
         filtered = [r for r in candidates if r.note_path != path]
         return filtered[:top_k]

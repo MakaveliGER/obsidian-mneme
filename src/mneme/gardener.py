@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import random
 from datetime import datetime, timezone, timedelta
 
 from mneme.store import Store
@@ -199,7 +200,8 @@ class VaultGardener:
         Checks a sample of up to 30 notes. Each pair is reported only once.
         """
         all_paths = self.store.get_all_note_paths()
-        sample = [p for p in all_paths[:30] if not self._is_excluded(p)]
+        non_excluded = [p for p in all_paths if not self._is_excluded(p)]
+        sample = random.sample(non_excluded, min(30, len(non_excluded)))
 
         seen_pairs: set[frozenset[str]] = set()
         results: list[dict] = []

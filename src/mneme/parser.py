@@ -119,7 +119,7 @@ def parse_note(file_path: Path, vault_root: Path) -> ParsedNote:
         file_path:  Absolute path to the .md file.
         vault_root: Absolute path to the vault root (for relative path calc).
     """
-    raw = file_path.read_text(encoding="utf-8")
+    raw = file_path.read_text(encoding="utf-8-sig")  # handles BOM on Windows
 
     content_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     relative_path = str(file_path.relative_to(vault_root))

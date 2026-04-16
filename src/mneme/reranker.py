@@ -39,7 +39,11 @@ class Reranker:
         pairs = [(query, r.content) for r in results]
 
         # Score all pairs
-        scores = model.predict(pairs, show_progress_bar=False)
+        raw_scores = model.predict(pairs, show_progress_bar=False)
+
+        # Normalize scores to [0, 1] via sigmoid (CrossEncoder returns logits)
+        import math
+        scores = [1.0 / (1.0 + math.exp(-float(s))) for s in raw_scores]
 
         # Attach scores and filter
         scored = []
@@ -51,7 +55,7 @@ class Reranker:
                     note_title=result.note_title,
                     heading_path=result.heading_path,
                     content=result.content,
-                    score=float(score),
+                    score=score,
                     tags=result.tags,
                 ))
 
