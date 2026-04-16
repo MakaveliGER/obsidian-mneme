@@ -9,6 +9,15 @@ description = "Local MCP server for semantic Obsidian vault search"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+authors = [{name = "André Sagasser", email = "andresagasser@gmail.com"}]
+keywords = ["obsidian", "mcp", "rag", "semantic-search", "vault"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Indexing",
+]
 dependencies = [
     "mcp[cli]",
     "sentence-transformers",
@@ -20,6 +29,11 @@ dependencies = [
     "platformdirs",
     "tomli-w",
 ]
+
+[project.urls]
+Homepage = "https://github.com/MakaveliGER/mneme"
+Repository = "https://github.com/MakaveliGER/mneme"
+Issues = "https://github.com/MakaveliGER/mneme/issues"
 
 [project.scripts]
 mneme = "mneme.cli:main"
