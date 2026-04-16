@@ -9,6 +9,7 @@ from mcp.server.fastmcp import FastMCP
 
 from mneme.config import MnemeConfig, load_config, save_config
 from mneme.embeddings import get_provider
+from mneme.gardener import VaultGardener
 from mneme.indexer import Indexer
 from mneme.reranker import Reranker
 from mneme.search import SearchEngine
@@ -50,10 +51,12 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
             reranker.warmup()
 
         search_engine = SearchEngine(store, provider, config.search, reranker=reranker, scoring_config=config.scoring)
+        gardener = VaultGardener(store, search_engine)
         state["store"] = store
         state["provider"] = provider
         state["indexer"] = indexer
         state["search"] = search_engine
+        state["gardener"] = gardener
         state["config"] = config
 
         # Start file watcher
@@ -286,5 +289,41 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
             result["warning"] = "Embedding settings changed — run 'reindex --full' to apply."
 
         return result
+
+    @mcp.tool()
+    def vault_health(
+        stale_days: int = 30,
+        similarity_threshold: float = 0.85,
+        checks: list[str] | None = None,
+    ) -> dict:
+        """Analyze vault health — find orphans, weak links, stale notes, near-duplicates.
+
+        Args:
+            stale_days: Notes with status 'aktiv' unchanged for this many days are stale.
+            similarity_threshold: Notes with similarity above this are potential duplicates.
+            checks: List of checks to run. Default: all.
+                    Options: orphans, weak_links, stale, duplicates.
+
+        Returns:
+            Health report with results for each requested check.
+        """
+        gardener: VaultGardener = state["gardener"]
+        all_checks = checks is None
+
+        report: dict = {}
+
+        if all_checks or "orphans" in checks:
+            report["orphan_pages"] = gardener.find_orphans()
+
+        if all_checks or "weak_links" in checks:
+            report["weakly_linked"] = gardener.find_weakly_linked(top_k=10)
+
+        if all_checks or "stale" in checks:
+            report["stale_notes"] = gardener.find_stale_notes(days=stale_days)
+
+        if all_checks or "duplicates" in checks:
+            report["near_duplicates"] = gardener.find_near_duplicates(threshold=similarity_threshold)
+
+        return report
 
     return mcp
