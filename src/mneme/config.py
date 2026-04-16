@@ -29,7 +29,10 @@ class VaultConfig(BaseModel):
 class EmbeddingConfig(BaseModel):
     provider: str = "sentence-transformers"  # "sentence-transformers" | "onnx"
     model: str = "BAAI/bge-m3"
-    backend: str = "cpu"  # "cpu" | "directml" | "cuda" | "rocm"
+    backend: str = "cpu"  # ONNX only: "cpu" | "directml" | "cuda" | "rocm"
+    device: str = "auto"  # "auto" | "cpu" | "cuda"
+    batch_size: int = 32  # 32-256, higher = faster on GPU (needs VRAM)
+    dtype: str = "float16"  # "float32" | "float16" | "bfloat16"
 
 
 class ChunkingConfig(BaseModel):

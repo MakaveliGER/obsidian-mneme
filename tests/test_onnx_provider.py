@@ -22,10 +22,16 @@ class MockConfig:
         provider="onnx",
         model="BAAI/bge-m3",
         backend="cpu",
+        device="cpu",
+        dtype="bfloat16",
+        batch_size=32,
     ):
         self.provider = provider
         self.model = model
         self.backend = backend
+        self.device = device
+        self.dtype = dtype
+        self.batch_size = batch_size
 
 
 # --- Tests that do NOT require onnxruntime ---

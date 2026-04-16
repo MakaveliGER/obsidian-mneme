@@ -16,9 +16,6 @@ from mneme.embeddings.base import EmbeddingProvider
 from mneme.parser import chunk_note, parse_note
 from mneme.store import ChunkData, Store
 
-_BATCH_SIZE = 32
-
-
 @dataclass
 class IndexResult:
     indexed: int
@@ -191,11 +188,12 @@ class Indexer:
             self._config.chunking.overlap_tokens,
         )
 
-        # Embed in batches
+        # Embed in batches (batch_size from config, default 32)
         chunk_texts = [c.content for c in chunks]
+        batch_size = self._config.embedding.batch_size
         embeddings: list[list[float]] = []
-        for i in range(0, len(chunk_texts), _BATCH_SIZE):
-            batch = chunk_texts[i : i + _BATCH_SIZE]
+        for i in range(0, len(chunk_texts), batch_size):
+            batch = chunk_texts[i : i + batch_size]
             embeddings.extend(self._embedding.embed(batch))
 
         chunk_data = [

@@ -9,7 +9,12 @@ def get_provider(config) -> EmbeddingProvider:
     """
     if config.provider == "sentence-transformers":
         from mneme.embeddings.sentence_transformers import SentenceTransformersProvider
-        return SentenceTransformersProvider(config.model)
+        return SentenceTransformersProvider(
+            model_name=config.model,
+            device=getattr(config, "device", "auto"),
+            dtype=getattr(config, "dtype", "bfloat16"),
+            batch_size=getattr(config, "batch_size", 32),
+        )
     if config.provider == "onnx":
         from mneme.embeddings.onnx_provider import ONNXProvider
         return ONNXProvider(

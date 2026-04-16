@@ -6,7 +6,7 @@ projekt: 02 Projekte/Eigenprojekte/Mneme.md
 workflow: 04 Ressourcen/Skills, Tech & Methoden/Workflows/Projekt-Workflow.md
 
 ## Kontext
-Lokaler MCP-Server für semantische Obsidian-Vault-Suche (v0.2.0). Headless RAG — 8 MCP-Tools, Hybrid Search (Vector BGE-M3 + BM25 → RRF), CrossEncoder Reranking, GARS-Scoring, Wikilink-Graph (348 Links), Gardener (Vault Health), Auto-Search (off/smart/always). Python 3.11+, FastMCP (stdio), SQLite + sqlite-vec + FTS5, Watchdog. 230 Tests, 19 Module. GPU: ROCm 9.5x Speedup auf RX 7900 XTX. Eval Baseline: Hit@1 65%, MRR 0.71.
+Lokaler MCP-Server für semantische Obsidian-Vault-Suche (v0.2.0). Headless RAG — 8 MCP-Tools, Hybrid Search (Vector BGE-M3 + BM25 → RRF), CrossEncoder Reranking, GARS-Scoring, Wikilink-Graph (348 Links), Gardener (Vault Health), Auto-Search (off/smart/always). Python 3.11+, FastMCP (stdio), SQLite + sqlite-vec + FTS5, Watchdog. 208 Tests, 19 Module. GPU: Dynamic Backend Detection (auto/cpu/cuda), ROCm 87x Speedup (float16, RX 7900 XTX). Eval Baseline: Hit@1 65%, MRR 0.71.
 ⚠️ Bei Stack-Änderungen oder Architektur-Pivots sofort aktualisieren — neue Sessions starten mit diesem Bild.
 
 ## Intent
