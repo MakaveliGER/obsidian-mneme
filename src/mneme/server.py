@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from mneme.config import MnemeConfig, load_config, save_config
 from mneme.embeddings import get_provider
 from mneme.indexer import Indexer
+from mneme.reranker import Reranker
 from mneme.search import SearchEngine
 from mneme.store import Store
 from mneme.watcher import VaultWatcher
@@ -39,7 +40,16 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
 
         store = Store(config.db_path, provider.dimension())
         indexer = Indexer(store, provider, config)
-        search_engine = SearchEngine(store, provider, config.search)
+
+        reranker = None
+        if config.reranking.enabled:
+            reranker = Reranker(
+                model_name=config.reranking.model,
+                threshold=config.reranking.threshold,
+            )
+            reranker.warmup()
+
+        search_engine = SearchEngine(store, provider, config.search, reranker=reranker)
         state["store"] = store
         state["provider"] = provider
         state["indexer"] = indexer

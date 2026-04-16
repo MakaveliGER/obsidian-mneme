@@ -51,6 +51,13 @@ class ServerConfig(BaseModel):
     transport: str = "stdio"
 
 
+class RerankingConfig(BaseModel):
+    enabled: bool = False  # Opt-in, nicht standardmäßig aktiv
+    model: str = "BAAI/bge-reranker-v2-m3"
+    top_k: int = 50  # Wie viele Ergebnisse an den Reranker geben
+    threshold: float = 0.3  # Ergebnisse unter diesem Score entfernen
+
+
 class MnemeConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MNEME_", env_nested_delimiter="__")
 
@@ -60,6 +67,7 @@ class MnemeConfig(BaseSettings):
     search: SearchConfig = Field(default_factory=SearchConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    reranking: RerankingConfig = Field(default_factory=RerankingConfig)
 
     @property
     def db_path(self) -> Path:

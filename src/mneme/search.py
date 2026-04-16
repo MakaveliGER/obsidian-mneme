@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mneme.store import Store, SearchResult
 from mneme.embeddings.base import EmbeddingProvider
+from mneme.reranker import Reranker
 
 
 def rrf_fusion(result_lists: list[list[SearchResult]], k: int = 60) -> list[SearchResult]:
@@ -44,11 +45,18 @@ def rrf_fusion(result_lists: list[list[SearchResult]], k: int = 60) -> list[Sear
 class SearchEngine:
     """Hybrid search engine combining vector and BM25 search via RRF."""
 
-    def __init__(self, store: Store, embedding_provider: EmbeddingProvider, config) -> None:
+    def __init__(
+        self,
+        store: Store,
+        embedding_provider: EmbeddingProvider,
+        config,
+        reranker: Reranker | None = None,
+    ) -> None:
         # config duck-typed: needs .vector_weight, .bm25_weight, .top_k
         self.store = store
         self.embedding_provider = embedding_provider
         self.config = config
+        self.reranker = reranker
 
     def search(
         self,
@@ -95,8 +103,12 @@ class SearchEngine:
             after=after,
         )
 
-        # --- Fuse and return ---
+        # --- Fuse and optionally rerank ---
         fused = rrf_fusion([vector_results, bm25_results])
+
+        if self.reranker is not None:
+            return self.reranker.rerank(query, fused, top_k)
+
         return fused[:top_k]
 
     def get_similar(self, path: str, top_k: int = 5) -> list[SearchResult]:
