@@ -6,7 +6,7 @@ projekt: 02 Projekte/Eigenprojekte/Mneme.md
 workflow: 04 Ressourcen/Skills, Tech & Methoden/Workflows/Projekt-Workflow.md
 
 ## Kontext
-Lokaler MCP-Server für semantische Obsidian-Vault-Suche. Headless RAG — Mneme macht Indexierung + Hybrid Search (Vector + BM25 → RRF), Claude via Claudian macht Reasoning. Python 3.11+, FastMCP (stdio), SQLite + sqlite-vec + FTS5, BGE-M3 Embeddings, Watchdog File Watcher.
+Lokaler MCP-Server für semantische Obsidian-Vault-Suche (v0.2.0). Headless RAG — 8 MCP-Tools, Hybrid Search (Vector BGE-M3 + BM25 → RRF), CrossEncoder Reranking, GARS-Scoring, Wikilink-Graph (348 Links), Gardener (Vault Health), Auto-Search (off/smart/always). Python 3.11+, FastMCP (stdio), SQLite + sqlite-vec + FTS5, Watchdog. 202 Tests, 15 Module.
 ⚠️ Bei Stack-Änderungen oder Architektur-Pivots sofort aktualisieren — neue Sessions starten mit diesem Bild.
 
 ## Intent
