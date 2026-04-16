@@ -46,6 +46,20 @@ def parse_frontmatter(content: str) -> tuple[dict, str]:
 # ---------------------------------------------------------------------------
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+_WIKILINK_DISPLAY_RE = re.compile(r"\[\[([^\]|]+)\|([^\]]+)\]\]|\[\[([^\]]+)\]\]")
+
+
+def strip_wikilink_brackets(text: str) -> str:
+    """Replace [[Target|Alias]] with Alias, and [[Target]] with Target.
+
+    Removes the [[ ]] syntax that is meaningless to embedding models,
+    keeping only the human-readable text.
+    """
+    def _replace(m: re.Match) -> str:
+        if m.group(2):  # [[Target|Alias]] -> Alias
+            return m.group(2)
+        return m.group(3)  # [[Target]] -> Target
+    return _WIKILINK_DISPLAY_RE.sub(_replace, text)
 
 
 def extract_wikilinks(text: str) -> list[str]:
@@ -307,7 +321,9 @@ def chunk_note(parsed: ParsedNote, max_tokens: int = 1000, overlap_tokens: int =
                 if tail_words:
                     overlap_prefix = " ".join(tail_words) + "\n\n"
 
-            full_content = context_header + "\n" + overlap_prefix + sub_text
+            # Strip [[wikilink]] brackets — meaningless to embedding models
+            clean_text = strip_wikilink_brackets(overlap_prefix + sub_text)
+            full_content = context_header + "\n" + clean_text
 
             chunks.append(Chunk(
                 content=full_content,

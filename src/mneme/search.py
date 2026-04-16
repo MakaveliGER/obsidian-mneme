@@ -7,21 +7,33 @@ from mneme.embeddings.base import EmbeddingProvider
 from mneme.reranker import Reranker
 
 
-def rrf_fusion(result_lists: list[list[SearchResult]], k: int = 60) -> list[SearchResult]:
+def rrf_fusion(
+    result_lists: list[list[SearchResult]],
+    weights: list[float] | None = None,
+    k: int = 60,
+) -> list[SearchResult]:
     """Reciprocal Rank Fusion over multiple ranked result lists.
 
-    RRF_score(d) = sum(1 / (k + rank_i(d))) for each list i where d appears.
+    RRF_score(d) = sum(weight_i * 1 / (k + rank_i(d))) for each list i where d appears.
     Identification is via chunk_id. The score field of each returned
     SearchResult is overwritten with its RRF score.
+
+    Args:
+        result_lists: Ranked result lists to fuse.
+        weights: Per-list weights. Defaults to equal weighting.
+        k: RRF smoothing constant (default 60).
     """
+    if weights is None:
+        weights = [1.0] * len(result_lists)
+
     rrf_scores: dict[int, float] = {}
     # Keep first-seen SearchResult object per chunk_id (carry metadata)
     best_result: dict[int, SearchResult] = {}
 
-    for result_list in result_lists:
+    for weight, result_list in zip(weights, result_lists):
         for rank, result in enumerate(result_list, start=1):
             cid = result.chunk_id
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (k + rank)
+            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + weight * 1.0 / (k + rank)
             if cid not in best_result:
                 best_result[cid] = result
 
@@ -113,8 +125,22 @@ class SearchEngine:
             after=after,
         )
 
-        # --- Fuse and optionally rerank ---
-        fused = rrf_fusion([vector_results, bm25_results])
+        # --- Determine RRF weights (optionally auto-adjusted by query type) ---
+        vector_w = float(getattr(self.config, "vector_weight", 0.6))
+        bm25_w = float(getattr(self.config, "bm25_weight", 0.4))
+
+        if getattr(self.config, "query_expansion", False) is True:
+            word_count = len(query.split())
+            if word_count <= 3:
+                # Short keyword queries → boost BM25
+                bm25_w = min(bm25_w * 1.5, 1.0)
+                vector_w = max(vector_w * 0.7, 0.1)
+            elif word_count >= 10:
+                # Long semantic queries → boost vector
+                vector_w = min(vector_w * 1.3, 1.0)
+                bm25_w = max(bm25_w * 0.7, 0.1)
+
+        fused = rrf_fusion([vector_results, bm25_results], weights=[vector_w, bm25_w])
 
         if self.reranker is not None:
             results = self.reranker.rerank(query, fused, top_k)
