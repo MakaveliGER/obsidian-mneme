@@ -8,19 +8,23 @@
 
 | Backend | Embed Time | Chunks/s | RAM Peak | Search | Status |
 |---|---|---|---|---|---|
-| **PyTorch CPU** (isoliert) | **1254s** (21 Min) | **0.9** | **7.6 GB** | **56ms** | **Stabil — Empfohlen** |
+| PyTorch CPU (FP32) | 1254s (21 Min) | 0.9 | 7.6 GB | 56ms | Baseline |
+| **PyTorch CPU (bfloat16 + SDPA)** | **1029s (17 Min)** | **1.1** | **7.0 GB** | **75ms** | **Empfohlen — Default** |
 | ONNX CPU (aapot/bge-m3-onnx) | 1637s (27 Min) | 0.7 | 31 GB | 25ms | Langsamer, 4x mehr RAM |
-| ONNX INT8 CPU (xenova/bge-m3) | >20 Min, abgebrochen | — | **39 GB** | — | OOM-Risiko, unbrauchbar |
+| ONNX INT8 CPU (xenova/bge-m3) | >20 Min, abgebrochen | — | 39 GB | — | OOM-Risiko |
 | ONNX + DirectML (FP32) | CRASH | — | — | — | Attention-Op nicht unterstützt |
 | ONNX INT8 + DirectML | CRASH | — | — | — | FusedMatMul "Falscher Parameter" |
+| PyTorch + ROCm (Python 3.12) | **nicht getestet** | — | — | — | **5-15x erwartet** (nächster Schritt) |
 
 ## Analyse
 
-### PyTorch CPU — Klarer Sieger
-- 1254s (21 Min) für Full Reindex, 0.9 Chunks/s
-- 7.6 GB RAM — handhabbar auf 64 GB System
-- 56ms Suchzeit pro Query
-- Stabil, vorhersagbar, keine Surprises
+### PyTorch CPU bfloat16 + SDPA — Klarer Sieger
+- **1029s (17 Min)** für Full Reindex, 1.1 Chunks/s — **22% schneller als FP32**
+- **7.0 GB RAM** — 8% weniger als FP32
+- 75ms Suchzeit pro Query (leicht höher als FP32, aber irrelevant)
+- bfloat16 halbiert die Precision → schnellere MatMul, weniger Speicher
+- SDPA (Scaled Dot-Product Attention) nutzt optimierte Flash-Attention-Kernels
+- **Jetzt als Default im SentenceTransformersProvider aktiviert**
 
 ### Alle ONNX-Varianten — Nicht empfehlenswert für BGE-M3
 BGE-M3 ist ein großes Modell (568M Parameter, 8192 Max Seq Length). Die verfügbaren ONNX-Exporte sind:
@@ -39,18 +43,29 @@ BGE-M3 ist ein großes Modell (568M Parameter, 8192 Max Seq Length). Die verfüg
 
 ## Empfehlung
 
-### Jetzt: PyTorch CPU beibehalten
-Kein Backend-Wechsel. PyTorch CPU ist stabil, am schnellsten, und verbraucht am wenigsten RAM. Der Full Reindex dauert 21 Min, aber Incremental ist 0.2s — für den Normalbetrieb kein Problem.
+### Jetzt: PyTorch CPU bfloat16 + SDPA (aktiviert als Default)
+22% schneller als FP32, 8% weniger RAM. Automatisch aktiv seit v0.2.0. Full Reindex: 17 Min statt 21 Min. Incremental bleibt 0.2s.
 
-### Für GPU-Beschleunigung (Zukunft)
-1. **PyTorch + ROCm auf WSL2** — sentence-transformers direkt mit AMD GPU, kein ONNX nötig. Vielversprechendster Weg.
-2. **Kleineres Modell** auf DirectML — `multilingual-e5-small` (120 MB, 384 Dim) funktioniert auf DirectML, aber Qualitäts-Tradeoff. Nur sinnvoll wenn Full Reindex häufig nötig ist.
-3. **NVIDIA CUDA** — Für User mit NVIDIA GPU: `pip install torch --index-url https://download.pytorch.org/whl/cu124` → sentence-transformers nutzt CUDA automatisch, 5-10x Speedup.
+### Nächster Schritt: PyTorch + ROCm (Python 3.12)
+AMD ROCm 7.2.1 auf Windows unterstützt die RX 7900 XTX offiziell. Erwarteter Speedup: 5-15x (17 Min → 1-3 Min). **Blocker: Python 3.12 nötig** (offizielle ROCm Wheels nur für cp312).
 
-### Config-Empfehlung für Mneme
+Installation (wenn bereit für Python 3.12):
+```bash
+uv venv --python 3.12
+pip install https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torch-2.9.1+rocm7.2.1-cp312-cp312-win_amd64.whl
+pip install sentence-transformers
+# sentence-transformers erkennt CUDA/ROCm automatisch via torch.cuda.is_available()
+```
+
+### Für NVIDIA-User
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+# sentence-transformers nutzt CUDA automatisch, 5-10x Speedup
+```
+
+### Config-Empfehlung
 ```toml
 [embedding]
-provider = "sentence-transformers"  # Nicht onnx — PyTorch ist schneller
+provider = "sentence-transformers"  # bfloat16 + SDPA automatisch aktiv
 model = "BAAI/bge-m3"
-# backend wird ignoriert bei sentence-transformers (auto-detect CPU/CUDA)
 ```
