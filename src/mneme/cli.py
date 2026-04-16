@@ -68,6 +68,17 @@ def setup():
 @main.command()
 def serve():
     """Start the MCP server (stdio transport for Claudian)."""
+    import logging
+    import sys
+
+    # Log to stderr so it doesn't interfere with stdio MCP transport
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(message)s",
+        datefmt="%H:%M:%S",
+        stream=sys.stderr,
+    )
+
     config = load_config()
     if not config.vault.path:
         click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)

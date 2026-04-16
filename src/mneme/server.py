@@ -24,13 +24,19 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
 
     mcp = FastMCP("mneme", instructions="Semantic Obsidian vault search. Use search_notes to find relevant notes.")
 
-    # Lazy-initialized components (first tool call triggers init)
+    # Eagerly initialized at server startup — model pre-loaded so first query is fast
     state: dict = {}
 
-    def _ensure_initialized() -> None:
-        if "store" in state:
-            return
+    def _initialize() -> None:
+        t0 = time.time()
+        logger.info("Mneme initializing...")
+
         provider = get_provider(config.embedding)
+
+        # Pre-load the embedding model so first query doesn't block
+        if hasattr(provider, "warmup"):
+            provider.warmup()
+
         store = Store(config.db_path, provider.dimension())
         indexer = Indexer(store, provider, config)
         search_engine = SearchEngine(store, provider, config.search)
@@ -45,6 +51,11 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
             watcher = VaultWatcher(config.vault_path, indexer, config)
             watcher.start()
             state["watcher"] = watcher
+
+        logger.info("Mneme ready (%.1fs)", time.time() - t0)
+
+    # Initialize eagerly — block until model is loaded
+    _initialize()
 
     @mcp.tool()
     def search_notes(
@@ -66,7 +77,6 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Search results with path, title, content, score, and tags.
         """
-        _ensure_initialized()
         start = time.monotonic()
         results = state["search"].search(
             query=query,
@@ -105,7 +115,6 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Similar notes with path, title, and similarity score.
         """
-        _ensure_initialized()
         results = state["search"].get_similar(path=path, top_k=top_k)
 
         return {
@@ -128,7 +137,6 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Index statistics including note count, chunk count, and database size.
         """
-        _ensure_initialized()
         stats = state["store"].get_stats(
             embedding_model=state["config"].embedding.model
         )
@@ -150,7 +158,6 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Indexing results with counts of indexed, skipped, and deleted notes.
         """
-        _ensure_initialized()
         result = state["indexer"].index_vault(full=full)
         return {
             "indexed": result.indexed,
@@ -166,7 +173,6 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Current configuration as a dictionary.
         """
-        _ensure_initialized()
         return state["config"].model_dump()
 
     @mcp.tool()
@@ -180,7 +186,6 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Updated key with old and new values. Note: some changes require restart.
         """
-        _ensure_initialized()
         cfg = state["config"]
         parts = key.split(".")
 
