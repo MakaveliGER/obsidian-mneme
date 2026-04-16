@@ -190,6 +190,35 @@ class TestBM25Search:
         assert "untagged.md" not in paths
 
 
+class TestFTS5Sanitizer:
+    def test_hyphenated_query(self, store: Store):
+        """Hyphens must not crash FTS5 (interpreted as column operator)."""
+        note_id = store.upsert_note("ki.md", "KI", "h", {}, [], [])
+        store.upsert_chunks(note_id, [
+            ChunkData("KI-Consulting und Beratung", "## KI", 0, _random_vec()),
+        ])
+        # This would crash without sanitization: "no such column: Consulting"
+        results = store.bm25_search("KI-Consulting", top_k=5)
+        assert len(results) >= 1
+        assert results[0].note_path == "ki.md"
+
+    def test_special_characters(self, store: Store):
+        """Queries with special FTS5 operators must not crash."""
+        note_id = store.upsert_note("test.md", "Test", "h", {}, [], [])
+        store.upsert_chunks(note_id, [
+            ChunkData("C++ programming and code*", "## Code", 0, _random_vec()),
+        ])
+        # * and + are FTS5 operators
+        results = store.bm25_search("C++ code*", top_k=5)
+        assert isinstance(results, list)  # no crash
+
+    def test_sanitize_preserves_words(self):
+        from mneme.store import Store
+        assert Store._sanitize_fts5_query("KI-Consulting") == '"KI" "Consulting"'
+        assert Store._sanitize_fts5_query("hello world") == '"hello" "world"'
+        assert Store._sanitize_fts5_query("simple") == '"simple"'
+
+
 class TestStats:
     def test_counts(self, store: Store):
         _insert_note_with_chunks(store, "a.md", "A", n_chunks=2)

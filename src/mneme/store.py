@@ -266,6 +266,22 @@ class Store:
             ))
         return results
 
+    @staticmethod
+    def _sanitize_fts5_query(query: str) -> str:
+        """Escape user query for FTS5 MATCH.
+
+        FTS5 treats characters like - * : as operators. Wrapping each token
+        in double quotes makes them literal search terms.
+        E.g. 'KI-Consulting' → '"KI" "Consulting"' (OR semantics in FTS5).
+        """
+        import re
+        # Split on non-word characters, keep only non-empty tokens
+        tokens = re.split(r"[^\w]+", query)
+        tokens = [t for t in tokens if t]
+        if not tokens:
+            return query
+        return " ".join(f'"{t}"' for t in tokens)
+
     def bm25_search(
         self,
         query_text: str,
@@ -275,6 +291,8 @@ class Store:
         after: str | None = None,
     ) -> list[SearchResult]:
         """BM25 search via FTS5 with optional pre-filtering on notes metadata."""
+        safe_query = self._sanitize_fts5_query(query_text)
+
         # Build query with optional filters
         where_clauses = []
         params: list = []
@@ -315,7 +333,7 @@ class Store:
         """
 
         rows = self._conn.execute(
-            query, [query_text] + params + [top_k]
+            query, [safe_query] + params + [top_k]
         ).fetchall()
 
         results = []
