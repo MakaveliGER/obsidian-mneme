@@ -380,6 +380,26 @@ export class MnemeSettingsTab extends PluginSettingTab {
         );
     }
 
+    this.addSectionTitle(advancedContainer, "Query Expansion");
+
+    new Setting(advancedContainer)
+      .setName("Query Expansion")
+      .setDesc(
+        "Passt Suchgewichte automatisch an den Query-Typ an: kurze Begriffe → mehr Keyword-Suche, lange Sätze → mehr Semantik. Bringt erst ab ~500 Notizen messbaren Vorteil."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.queryExpansion ?? false)
+          .onChange(async (value) => {
+            this.plugin.settings.queryExpansion = value;
+            await this.plugin.saveSettings();
+            await this.plugin.client.updateConfig(
+              "search.query_expansion",
+              String(value)
+            );
+          })
+      );
+
     this.addSectionTitle(advancedContainer, "Auto-Search");
 
     new Setting(advancedContainer)
@@ -429,6 +449,56 @@ export class MnemeSettingsTab extends PluginSettingTab {
             );
           })
       );
+
+    // ── Server & Sync ──────────────────────────────
+    this.addSectionTitle(containerEl, "Server & Synchronisation");
+
+    new Setting(containerEl)
+      .setName("Server automatisch starten")
+      .setDesc(
+        "Startet den Mneme-Server beim Öffnen von Obsidian. Der Server überwacht Dateiänderungen automatisch im Hintergrund (Watchdog)."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoStartServer)
+          .onChange(async (value) => {
+            this.plugin.settings.autoStartServer = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Reindex bei Start")
+      .setDesc(
+        "Synchronisiert den Index beim Öffnen von Obsidian. Wichtig wenn Notizen extern geändert wurden (z.B. über Obsidian Sync, Mobile, oder einen anderen Rechner)."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.reindexOnStart)
+          .onChange(async (value) => {
+            this.plugin.settings.reindexOnStart = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Reindex beim Schließen")
+      .setDesc(
+        "Stellt sicher, dass alle Änderungen vor dem Beenden indexiert sind. Nützlich wenn andere Geräte denselben Index nutzen."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.reindexOnClose)
+          .onChange(async (value) => {
+            this.plugin.settings.reindexOnClose = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    containerEl.createEl("p", {
+      text: "ℹ️ Der Watchdog erfasst automatisch alle Dateiänderungen während Obsidian läuft. Ein manueller Reindex ist nur nötig wenn Notizen außerhalb von Obsidian geändert wurden.",
+      cls: "setting-item-description",
+    });
 
     // ── Action Buttons ────────────────────────────
     this.addSectionTitle(containerEl, "Aktionen");

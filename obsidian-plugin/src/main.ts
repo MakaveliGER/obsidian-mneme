@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf, addIcon } from "obsidian";
+import { Plugin, WorkspaceLeaf, Notice, addIcon } from "obsidian";
 import { MnemeClient } from "./mneme-client";
 import { MnemeSettingsTab } from "./settings";
 import { MnemeSearchView, SEARCH_VIEW_TYPE } from "./search-view";
@@ -65,10 +65,66 @@ export default class MnemePlugin extends Plugin {
       name: "Vault health check",
       callback: () => this.showHealthReport(),
     });
+
+    // Server lifecycle: auto-start + reindex on startup
+    this.app.workspace.onLayoutReady(() => {
+      this.onStartup();
+    });
   }
 
   onunload(): void {
     this.statusBar?.stopPolling();
+    this.onShutdown();
+  }
+
+  /** Called when Obsidian layout is ready — start server + optional reindex */
+  private async onStartup(): Promise<void> {
+    // Auto-start server
+    if (this.settings.autoStartServer) {
+      const started = this.client.startServer();
+      if (started) {
+        new Notice("Mneme: Server gestartet", 3000);
+        // Wait briefly for server to initialize before reindex
+        await new Promise((r) => setTimeout(r, 2000));
+      } else {
+        new Notice(
+          "Mneme: Server konnte nicht gestartet werden. Prüfe den Pfad in den Settings.",
+          8000
+        );
+        return;
+      }
+    }
+
+    // Reindex on start (catches offline changes + sync)
+    if (this.settings.reindexOnStart) {
+      try {
+        const result = await this.client.reindex(false);
+        if (result.indexed > 0 || result.deleted > 0) {
+          new Notice(
+            `Mneme: Sync abgeschlossen — ${result.indexed} aktualisiert, ${result.deleted} gelöscht (${result.duration_seconds.toFixed(1)}s)`,
+            5000
+          );
+        }
+        this.statusBar?.refresh();
+      } catch {
+        // Silent — server might still be initializing
+      }
+    }
+  }
+
+  /** Called when Obsidian closes — optional reindex + stop server */
+  private async onShutdown(): Promise<void> {
+    // Reindex on close
+    if (this.settings.reindexOnClose) {
+      try {
+        await this.client.reindex(false);
+      } catch {
+        // Silent — we're shutting down
+      }
+    }
+
+    // Stop server
+    this.client.stopServer();
   }
 
   async loadSettings(): Promise<void> {

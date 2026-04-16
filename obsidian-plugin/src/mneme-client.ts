@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { exec, spawn, ChildProcess } from "child_process";
 import { promisify } from "util";
 import type {
   SearchResult,
@@ -13,12 +13,55 @@ const execAsync = promisify(exec);
 /**
  * Client for communicating with the Mneme Python backend via CLI.
  * All operations are async and return parsed JSON responses.
+ * Can also manage the MCP server process lifecycle.
  */
 export class MnemeClient {
+  private serverProcess: ChildProcess | null = null;
+
   constructor(private mnemePath: string = "mneme") {}
 
   setPath(path: string): void {
     this.mnemePath = path;
+  }
+
+  /** Start the Mneme MCP server as a background process */
+  startServer(): boolean {
+    if (this.serverProcess && !this.serverProcess.killed) {
+      return true; // already running
+    }
+    try {
+      this.serverProcess = spawn(this.mnemePath, ["serve"], {
+        stdio: "ignore",
+        detached: false,
+        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+      });
+
+      this.serverProcess.on("error", () => {
+        this.serverProcess = null;
+      });
+
+      this.serverProcess.on("exit", () => {
+        this.serverProcess = null;
+      });
+
+      return true;
+    } catch {
+      this.serverProcess = null;
+      return false;
+    }
+  }
+
+  /** Stop the Mneme server process */
+  stopServer(): void {
+    if (this.serverProcess && !this.serverProcess.killed) {
+      this.serverProcess.kill();
+      this.serverProcess = null;
+    }
+  }
+
+  /** Check if server process is running */
+  isServerRunning(): boolean {
+    return this.serverProcess !== null && !this.serverProcess.killed;
   }
 
   /** Run a mneme CLI command and return parsed JSON output */
