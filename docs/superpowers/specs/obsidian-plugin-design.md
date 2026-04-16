@@ -66,15 +66,23 @@ Vollständige Konfiguration von Mneme über Obsidian Settings. Alle Settings wer
 
 #### Basic Settings (immer sichtbar)
 
-| Setting | UI-Element | Config-Key | Notizen |
-|---|---|---|---|
-| Vault Path | Text Input (auto-detect) | `vault.path` | Auto-detect aktuellen Vault beim ersten Start |
-| Embedding Model | Dropdown | `embedding.model` | BGE-M3 (Default), nomic-embed-text |
-| Auto-Search Mode | Radio Group | `auto_search.mode` | Off / Smart / Always — mit Tooltips |
-| Search Top-K | Number Input | `search.top_k` | Range 1–50 |
-| Chunk Size | Number Input | `chunking.max_tokens` | Range 200–2000 |
+Jedes Setting hat eine **Beschreibung** (`setDesc()`) die erklärt was es tut, und wo sinnvoll einen **Tooltip** mit technischen Details.
 
-#### Auto-Search Mode — Detail-Optionen
+| Setting | UI-Element | Config-Key | Beschreibung |
+|---|---|---|---|
+| Vault Path | Text Input (auto-detect) | `vault.path` | "Pfad zum Obsidian Vault. Wird beim ersten Start automatisch erkannt." |
+| Embedding Device | Dropdown | `embedding.device` | "GPU-Beschleunigung: auto erkennt GPU automatisch, cpu erzwingt CPU-Modus." |
+| Embedding dtype | Dropdown | `embedding.dtype` | "Datentyp für Embeddings. float16 ist optimal für GPU (AMD), bfloat16 für CPU." |
+| Auto-Search Mode | Radio Group | `auto_search.mode` | Off / Smart / Always — mit Detail-Beschreibung pro Option |
+| Search Top-K | Number Input | `search.top_k` | "Anzahl der Suchergebnisse pro Abfrage (1-50)." |
+
+#### Auto-Search Mode — Detail-Beschreibungen
+
+| Modus | Beschreibung im Plugin |
+|---|---|
+| **Off** | "Mneme sucht nur wenn du oder Claude explizit `search_notes` aufruft." |
+| **Smart** | "Fügt eine Regel in die CLAUDE.md ein, damit Claude bei Wissensfragen proaktiv sucht. Empfohlen." |
+| **Always** | "Installiert PreToolUse-Hooks in Claudian. Claude sucht automatisch bei jedem File-Read. Maximaler Kontext, aber mehr Latenz." |
 
 **Smart:** Zeigt Button "Regel einfügen" → ruft `mneme auto-search smart` auf, gibt Ausgabe als Notice.
 
@@ -82,11 +90,17 @@ Vollständige Konfiguration von Mneme über Obsidian Settings. Alle Settings wer
 
 #### Advanced Settings (hinter "Show Advanced" Toggle)
 
-| Setting | UI-Element | Config-Key | Notizen |
+| Setting | UI-Element | Config-Key | Beschreibung |
 |---|---|---|---|
-| Reranking | Toggle + Slider | `reranking.enabled`, `reranking.threshold` | Slider Range 0.0–1.0 |
-| GARS-Scoring | Toggle + Slider | `scoring.gars_enabled`, `scoring.graph_weight` | Slider Range 0.0–1.0 |
-| Health Exclude Patterns | Tag-List (Add/Remove) | `health.exclude_patterns` | Freie Eingabe, Enter zum Hinzufügen |
+| Embedding Model | Dropdown | `embedding.model` | "Embedding-Modell für Vektorsuche. BGE-M3 empfohlen (multilingual, MIT-Lizenz)." |
+| Batch Size | Number Input | `embedding.batch_size` | "Batch-Größe für Embedding-Berechnung. 32 ist optimal für BGE-M3." |
+| Chunk Size | Number Input | `chunking.max_tokens` | "Maximale Chunk-Größe in Tokens. Größere Chunks = mehr Kontext, weniger Precision." |
+| Chunk Overlap | Number Input | `chunking.overlap_tokens` | "Überlappung zwischen Chunks in Tokens. Verhindert Informationsverlust an Chunk-Grenzen." |
+| Vector Weight | Slider | `search.vector_weight` | "Gewichtung der Vektorsuche (0.0-1.0). Höher = mehr Semantik." |
+| BM25 Weight | Slider | `search.bm25_weight` | "Gewichtung der Keyword-Suche (0.0-1.0). Höher = mehr exakte Matches." |
+| Reranking | Toggle + Slider | `reranking.enabled`, `reranking.threshold` | "CrossEncoder Reranking für präzisere Ergebnisse. Langsamer, aber genauer. Threshold: Mindest-Score (0.0-1.0)." |
+| GARS-Scoring | Toggle + Slider | `scoring.gars_enabled`, `scoring.graph_weight` | "Graph-Aware Scoring: Berücksichtigt Wikilink-Vernetzung. Gut vernetzte Notizen werden bevorzugt." |
+| Health Exclude Patterns | Tag-List (Add/Remove) | `health.exclude_patterns` | "Ordner die bei Vault-Health-Checks ignoriert werden. Format: `ordner/**`" |
 
 #### Settings-Sync-Logik
 
@@ -208,10 +222,16 @@ Alle Commands werden in `onload()` via `addCommand()` registriert.
 
 ### 6. Ribbon Icon (`main.ts`)
 
-`design/icon.png` (256×256 px) als Ribbon-Button in der linken Sidebar.
+Custom SVG-Silhouette der Muse (`design/ribbon-icon.svg`) als Ribbon-Button in der linken Sidebar. Monochrom, nutzt `currentColor` für Theme-Kompatibilität (Dark + Light).
 
+- Registriert via `addRibbonIcon()` mit inline SVG
 - Klick → öffnet/fokussiert das Sidebar Search Panel
 - Tooltip: "Mneme — Vault Search"
+
+**Icon-Sichtbarkeit:**
+- **Ribbon** (linke Sidebar): Custom SVG Silhouette (monochrom)
+- **Plugin Settings Header**: Banner + Icon (Vollfarbe)
+- **Community Plugin Store**: `icon.png` (256×256)
 
 ---
 
