@@ -94,7 +94,8 @@ def serve():
 
 @main.command()
 @click.option("--full", is_flag=True, help="Re-index all notes (ignore hash cache).")
-def reindex(full: bool):
+@click.option("--json", "as_json", is_flag=True, help="Output result as JSON.")
+def reindex(full: bool, as_json: bool):
     """Re-index the vault (incremental by default)."""
     config = load_config()
     if not config.vault.path:
@@ -105,47 +106,65 @@ def reindex(full: bool):
     from mneme.indexer import Indexer
     from mneme.store import Store
 
-    click.echo(f"Indexing vault: {config.vault.path}")
+    if not as_json:
+        click.echo(f"Indexing vault: {config.vault.path}")
     provider = get_provider(config.embedding)
     store = Store(config.db_path, provider.dimension())
     indexer = Indexer(store, provider, config)
     result = indexer.index_vault(full=full)
     store.close()
 
-    mode = "full" if full else "incremental"
-    click.echo(f"\n{mode.capitalize()} reindex complete:")
-    click.echo(f"  Indexed: {result.indexed}")
-    click.echo(f"  Skipped: {result.skipped}")
-    click.echo(f"  Deleted: {result.deleted}")
-    click.echo(f"  Duration: {result.duration_seconds:.1f}s")
+    if as_json:
+        click.echo(json.dumps({
+            "indexed": result.indexed,
+            "skipped": result.skipped,
+            "deleted": result.deleted,
+            "duration_seconds": round(result.duration_seconds, 2),
+        }))
+    else:
+        mode = "full" if full else "incremental"
+        click.echo(f"\n{mode.capitalize()} reindex complete:")
+        click.echo(f"  Indexed: {result.indexed}")
+        click.echo(f"  Skipped: {result.skipped}")
+        click.echo(f"  Deleted: {result.deleted}")
+        click.echo(f"  Duration: {result.duration_seconds:.1f}s")
 
 
 @main.command()
-def status():
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+def status(as_json: bool):
     """Show index statistics."""
     config = load_config()
     if not config.vault.path:
         click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
         raise SystemExit(1)
 
-    from mneme.embeddings import get_provider
     from mneme.store import Store
 
-    provider = get_provider(config.embedding)
-    store = Store(config.db_path, provider.dimension())
+    # Open store with dim=1 — we only read stats, no embedding needed
+    store = Store(config.db_path, embedding_dim=1)
     stats = store.get_stats(embedding_model=config.embedding.model)
     store.close()
 
-    click.echo("Mneme Index Status")
-    click.echo("=" * 40)
-    click.echo(f"  Vault:     {config.vault.path}")
-    click.echo(f"  Notes:     {stats.total_notes}")
-    click.echo(f"  Chunks:    {stats.total_chunks}")
-    click.echo(f"  Model:     {stats.embedding_model}")
-    click.echo(f"  DB Size:   {stats.db_size_mb} MB")
-    click.echo(f"  Last Index: {stats.last_indexed or 'never'}")
-    click.echo(f"  Config:    {config_path()}")
-    click.echo(f"  Database:  {config.db_path}")
+    if as_json:
+        click.echo(json.dumps({
+            "total_notes": stats.total_notes,
+            "total_chunks": stats.total_chunks,
+            "last_indexed": stats.last_indexed,
+            "embedding_model": stats.embedding_model,
+            "db_size_mb": stats.db_size_mb,
+        }))
+    else:
+        click.echo("Mneme Index Status")
+        click.echo("=" * 40)
+        click.echo(f"  Vault:     {config.vault.path}")
+        click.echo(f"  Notes:     {stats.total_notes}")
+        click.echo(f"  Chunks:    {stats.total_chunks}")
+        click.echo(f"  Model:     {stats.embedding_model}")
+        click.echo(f"  DB Size:   {stats.db_size_mb} MB")
+        click.echo(f"  Last Index: {stats.last_indexed or 'never'}")
+        click.echo(f"  Config:    {config_path()}")
+        click.echo(f"  Database:  {config.db_path}")
 
 
 @main.command()
@@ -198,6 +217,150 @@ def eval(dataset: str, top_k: int):
     store.close()
 
     print_report(report)
+
+
+@main.command()
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.option("--stale-days", default=30, show_default=True, help="Days after which active notes are stale.")
+@click.option("--threshold", default=0.85, show_default=True, help="Similarity threshold for near-duplicates.")
+def health(as_json: bool, stale_days: int, threshold: float):
+    """Run vault health analysis — orphans, weak links, stale notes, duplicates."""
+    config = load_config()
+    if not config.vault.path:
+        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
+        raise SystemExit(1)
+
+    from mneme.embeddings import get_provider
+    from mneme.gardener import VaultGardener
+    from mneme.search import SearchEngine
+    from mneme.store import Store
+
+    provider = get_provider(config.embedding)
+    store = Store(config.db_path, provider.dimension())
+    engine = SearchEngine(store=store, embedding_provider=provider, config=config.search)
+    gardener = VaultGardener(store, engine, exclude_patterns=config.health.exclude_patterns)
+
+    if not as_json:
+        click.echo("Running vault health analysis...")
+
+    report: dict = {}
+    report["orphan_pages"] = gardener.find_orphans()
+    report["weakly_linked"] = gardener.find_weakly_linked(top_k=10)
+    report["stale_notes"] = gardener.find_stale_notes(days=stale_days)
+    report["near_duplicates"] = gardener.find_near_duplicates(threshold=threshold)
+    store.close()
+
+    if as_json:
+        click.echo(json.dumps(report, ensure_ascii=False))
+    else:
+        click.echo("\nVault Health Report")
+        click.echo("=" * 40)
+        click.echo(f"  Orphans:        {len(report['orphan_pages'])}")
+        click.echo(f"  Weakly Linked:  {len(report['weakly_linked'])}")
+        click.echo(f"  Stale Notes:    {len(report['stale_notes'])}")
+        click.echo(f"  Near Duplicates: {len(report['near_duplicates'])}")
+
+
+@main.command("get-config")
+@click.option("--json", "as_json", is_flag=True, default=True, help="Output as JSON (default).")
+def get_config(as_json: bool):
+    """Show current Mneme configuration."""
+    config = load_config()
+    data = config.model_dump(exclude_defaults=False)
+    if as_json:
+        click.echo(json.dumps(data, ensure_ascii=False))
+    else:
+        import tomli_w
+        sys.stdout.buffer.write(tomli_w.dumps(data))
+
+
+@main.command("update-config")
+@click.argument("key")
+@click.argument("value")
+def update_config(key: str, value: str):
+    """Update a config setting. Use dot-notation (e.g. embedding.device cuda)."""
+    config = load_config()
+    parts = key.split(".")
+
+    if len(parts) != 2:
+        click.echo(f"Error: Key must be 'section.setting', got '{key}'", err=True)
+        raise SystemExit(1)
+
+    section_name, setting_name = parts
+    section = getattr(config, section_name, None)
+    if section is None:
+        click.echo(f"Error: Unknown section: {section_name}", err=True)
+        raise SystemExit(1)
+
+    if not hasattr(section, setting_name):
+        click.echo(f"Error: Unknown setting: {key}", err=True)
+        raise SystemExit(1)
+
+    old_value = getattr(section, setting_name)
+    target_type = type(old_value)
+    try:
+        if target_type == bool:
+            parsed = value.lower() in ("true", "1", "yes")
+        elif target_type == int:
+            parsed = int(value)
+        elif target_type == float:
+            parsed = float(value)
+        elif target_type == list:
+            parsed = json.loads(value)
+        else:
+            parsed = value
+    except (ValueError, TypeError) as e:
+        click.echo(f"Error: Cannot parse '{value}' as {target_type.__name__}: {e}", err=True)
+        raise SystemExit(1)
+
+    setattr(section, setting_name, parsed)
+    save_config(config)
+    click.echo(f"{key}: {old_value} → {parsed}")
+
+
+@main.command("search")
+@click.argument("query")
+@click.option("--top-k", default=10, show_default=True, help="Number of results.")
+@click.option("--json", "as_json", is_flag=True, default=True, help="Output as JSON (default).")
+def search(query: str, top_k: int, as_json: bool):
+    """Search the vault using hybrid semantic + keyword search."""
+    config = load_config()
+    if not config.vault.path:
+        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
+        raise SystemExit(1)
+
+    from mneme.embeddings import get_provider
+    from mneme.search import SearchEngine
+    from mneme.store import Store
+
+    provider = get_provider(config.embedding)
+    store = Store(config.db_path, provider.dimension())
+    engine = SearchEngine(store=store, embedding_provider=provider, config=config.search)
+    results = engine.search(query=query, top_k=top_k)
+    store.close()
+
+    output = {
+        "results": [
+            {
+                "path": r.note_path,
+                "title": r.note_title,
+                "heading_path": r.heading_path,
+                "content": r.content[:1500],
+                "score": round(r.score, 4),
+                "tags": r.tags,
+            }
+            for r in results
+        ],
+        "query": query,
+        "total_results": len(results),
+    }
+
+    if as_json:
+        click.echo(json.dumps(output, ensure_ascii=False))
+    else:
+        click.echo(f"Found {len(results)} results for: {query}")
+        for r in results:
+            click.echo(f"  [{r.score:.4f}] {r.note_title} ({r.note_path})")
 
 
 @main.command("hook-search")

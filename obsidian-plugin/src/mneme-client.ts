@@ -79,8 +79,9 @@ export class MnemeClient {
   /** Search the vault */
   async search(query: string, topK?: number): Promise<SearchResult[]> {
     const tkArg = topK ? ` --top-k ${topK}` : "";
+    const escaped = query.replace(/"/g, '\\"');
     const result = (await this.run(
-      `hook-search --query "${query.replace(/"/g, '\\"')}"${tkArg}`
+      `search "${escaped}"${tkArg} --json`
     )) as { results?: SearchResult[] };
     return result.results || [];
   }
