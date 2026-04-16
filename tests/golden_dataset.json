@@ -1,0 +1,122 @@
+[
+  {
+    "question": "Was ist Andrés KI-Strategie für Hohenstein?",
+    "ground_truth_answer": "KI-Weiterbildungszentrum der TIC-Branche aufbauen, Use Cases für toxikologische Recherche und Prüfberichtautomatisierung identifizieren, Fördermittel über Hohenstein und externe Programme nutzen",
+    "expected_contexts": ["02 Projekte/Corporate/KI-Strategie Hohenstein"],
+    "tags": ["strategie", "hohenstein", "ki"]
+  },
+  {
+    "question": "Wie funktioniert Mneme und wozu dient es?",
+    "ground_truth_answer": "Mneme ist ein lokaler MCP-Server der semantische Suche über einen Obsidian-Vault ermöglicht, hybride Suche (Vektor + BM25) mit RRF-Fusion nutzt und sich in Claude Code integriert",
+    "expected_contexts": ["02 Projekte/Dev/Mneme"],
+    "tags": ["mneme", "mcp", "suche"]
+  },
+  {
+    "question": "Welche Trading-Strategie verfolgt André aktuell?",
+    "ground_truth_answer": "Regelbasiertes System mit definierten Entry/Exit-Kriterien, Fokus auf asymmetrische Risk-Reward-Setups, Journaling zur kontinuierlichen Verbesserung",
+    "expected_contexts": ["02 Projekte/Finance/Trading-Strategie"],
+    "tags": ["trading", "finanzen"]
+  },
+  {
+    "question": "Was sind die nächsten Schritte im Mneme-Projekt?",
+    "ground_truth_answer": "RAGAS-Evaluierungsinfrastruktur aufbauen, Reranking optimieren, Obsidian-Plugin entwickeln, Performance-Benchmarks erstellen",
+    "expected_contexts": ["02 Projekte/Dev/Mneme", "02 Projekte/Dev/Mneme/Roadmap"],
+    "tags": ["mneme", "roadmap", "entwicklung"]
+  },
+  {
+    "question": "Wie plant André die KI-Weiterbildungsprogramme bei Hohenstein zu strukturieren?",
+    "ground_truth_answer": "Modulares Curriculum für verschiedene Kompetenzlevel, praxisnahe Use Cases aus der TIC-Branche, Zertifizierungsmodule, Kooperationen mit Hochschulen",
+    "expected_contexts": ["02 Projekte/Corporate/Weiterbildung Hohenstein"],
+    "tags": ["weiterbildung", "hohenstein", "ki"]
+  },
+  {
+    "question": "Welche Rolle übernimmt André ab Mai 2026?",
+    "ground_truth_answer": "Leiter der KI-Weiterbildungsprogramme bei Hohenstein, verantwortlich für Curriculum-Design und Umsetzung von KI-Bildungsangeboten in der TIC-Branche",
+    "expected_contexts": ["01 Bereiche/Karriere/Hohenstein"],
+    "tags": ["karriere", "hohenstein", "rolle"]
+  },
+  {
+    "question": "Welche Technologien und Tools nutzt André täglich als Entwickler?",
+    "ground_truth_answer": "Python, Claude Code, Obsidian, Git, VS Code, MCP-Protokoll, verschiedene KI-APIs und Embedding-Modelle",
+    "expected_contexts": ["01 Bereiche/Skills/Tech-Stack"],
+    "tags": ["skills", "tools", "entwicklung"]
+  },
+  {
+    "question": "Was ist Andrés Hintergrund im Bereich Web3 und Blockchain?",
+    "ground_truth_answer": "Web3-Berater mit Erfahrung in DeFi, Smart Contracts und tokenisierten Geschäftsmodellen, verbindet klassische Unternehmensberatung mit dezentralen Technologien",
+    "expected_contexts": ["01 Bereiche/Skills/Web3"],
+    "tags": ["web3", "blockchain", "beratung"]
+  },
+  {
+    "question": "Wie beschreibt André seine Stärken als KI-Consultant?",
+    "ground_truth_answer": "Brücke zwischen technischer Umsetzung und strategischem Business-Nutzen, Use-Case-Identifikation, Prompting-Expertise, Fähigkeit komplexe KI-Konzepte verständlich zu vermitteln",
+    "expected_contexts": ["01 Bereiche/Skills/KI-Consulting"],
+    "tags": ["consulting", "ki", "skills"]
+  },
+  {
+    "question": "Was motiviert André in seiner Arbeit und was sind seine langfristigen Ziele?",
+    "ground_truth_answer": "KI demokratisieren und zugänglich machen, Bildungsinstitutionen modernisieren, finanzielle Unabhängigkeit durch mehrere Einkommensquellen aufbauen",
+    "expected_contexts": ["01 Bereiche/Ziele/Langzeitvision"],
+    "tags": ["ziele", "motivation", "persoenlich"]
+  },
+  {
+    "question": "Wie funktioniert RAG (Retrieval-Augmented Generation) technisch?",
+    "ground_truth_answer": "Dokumente werden in Chunks aufgeteilt, mit Embedding-Modellen vektorisiert und in einer Vektordatenbank gespeichert. Bei Anfragen werden relevante Chunks abgerufen und als Kontext an ein LLM übergeben",
+    "expected_contexts": ["04 Ressourcen/KI/RAG-Architektur"],
+    "tags": ["rag", "ki", "technik"]
+  },
+  {
+    "question": "Was ist der Unterschied zwischen verschiedenen Embedding-Modellen und welches ist für Deutsch geeignet?",
+    "ground_truth_answer": "Multilingual-Modelle wie BAAI/bge-m3 oder multilingual-e5-large unterstützen Deutsch nativ. Für rein englische Inhalte sind spezialisierte Modelle wie text-embedding-3-small oft schneller",
+    "expected_contexts": ["04 Ressourcen/KI/Embedding-Modelle"],
+    "tags": ["embeddings", "ki", "deutsch"]
+  },
+  {
+    "question": "Wie funktioniert das MCP-Protokoll und wie integriert es sich in Claude?",
+    "ground_truth_answer": "Model Context Protocol definiert eine standardisierte Schnittstelle zwischen LLMs und externen Tools/Datenquellen via JSON-RPC über stdio oder HTTP. Claude Code lädt MCP-Server aus der Konfiguration",
+    "expected_contexts": ["04 Ressourcen/KI/MCP-Protokoll"],
+    "tags": ["mcp", "claude", "protokoll"]
+  },
+  {
+    "question": "Was sind die Vor- und Nachteile von Reranking im RAG-System?",
+    "ground_truth_answer": "Reranking verbessert Relevanz durch semantische Neuordnung der Ergebnisse, erhöht aber Latenz und Ressourcenbedarf. Cross-Encoder-Modelle sind präziser aber langsamer als Bi-Encoder",
+    "expected_contexts": ["04 Ressourcen/KI/Reranking"],
+    "tags": ["reranking", "rag", "performance"]
+  },
+  {
+    "question": "Wie evaluiert man die Qualität eines RAG-Systems ohne teures LLM-Scoring?",
+    "ground_truth_answer": "Hit Rate @K und MRR (Mean Reciprocal Rank) messen Retrieval-Qualität direkt über Golden Datasets ohne LLM. RAGAS-Framework bietet zusätzlich LLM-basierte Faithfulness- und Relevancy-Metriken",
+    "expected_contexts": ["04 Ressourcen/KI/RAG-Evaluation"],
+    "tags": ["evaluation", "rag", "metriken"]
+  },
+  {
+    "question": "Wie ist Andrés Obsidian-Vault nach PARA strukturiert?",
+    "ground_truth_answer": "Projects (02), Areas (01), Resources (04), Archive (05 oder 06). Tägliche Notizen in 05 Daily Notes, Templates in separatem Ordner, Inbox für eingehende Notizen",
+    "expected_contexts": ["00 System/Vault-Struktur"],
+    "tags": ["vault", "para", "obsidian"]
+  },
+  {
+    "question": "Welche Templates nutzt André regelmäßig in Obsidian?",
+    "ground_truth_answer": "Daily Note Template mit Habit-Tracker und Top-3-Prioritäten, Meeting-Template mit Aktionspunkten, Projekt-Template mit PARA-Metadaten und Next Actions",
+    "expected_contexts": ["00 System/Templates"],
+    "tags": ["templates", "obsidian", "workflow"]
+  },
+  {
+    "question": "Wie sieht Andrés Daily-Note-Workflow aus?",
+    "ground_truth_answer": "Morgenroutine mit Top-3-Zielen, Zeitblöcke für Deep Work, abendliches Review mit Reflexionsfragen, automatische Verlinkung zu Projekten und Bereichen",
+    "expected_contexts": ["00 System/Workflows/Daily-Note"],
+    "tags": ["workflow", "daily-note", "produktivitaet"]
+  },
+  {
+    "question": "Wie verwaltet André seine Projekte und Next Actions in Obsidian?",
+    "ground_truth_answer": "GTD-inspirierter Ansatz: Projekte als Notes im 02-Ordner mit Status-Tag, Next Actions als Tasks mit Fälligkeitsdatum, wöchentliches Review zur Priorisierung",
+    "expected_contexts": ["00 System/Workflows/Projektmanagement"],
+    "tags": ["projekte", "gtd", "workflow"]
+  },
+  {
+    "question": "Welche Dataview-Queries nutzt André für Vault-Übersichten?",
+    "ground_truth_answer": "Aktive-Projekte-Dashboard, offene Tasks nach Kontext, verwaiste Notizen ohne Backlinks, letzte Änderungen sortiert nach Modified-Datum",
+    "expected_contexts": ["00 System/Workflows/Dataview"],
+    "tags": ["dataview", "obsidian", "dashboard"]
+  }
+]

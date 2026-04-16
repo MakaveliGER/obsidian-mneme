@@ -148,6 +148,58 @@ def status():
     click.echo(f"  Database:  {config.db_path}")
 
 
+@main.command()
+@click.option(
+    "--dataset",
+    default="tests/golden_dataset.json",
+    show_default=True,
+    help="Path to golden dataset JSON.",
+)
+@click.option(
+    "--top-k",
+    default=10,
+    show_default=True,
+    help="Number of results to retrieve per question.",
+)
+def eval(dataset: str, top_k: int):
+    """Evaluate retrieval quality against a golden dataset."""
+    from pathlib import Path as _Path
+
+    from mneme.eval import load_golden_dataset, evaluate_retrieval, print_report
+
+    dataset_path = _Path(dataset)
+    if not dataset_path.exists():
+        click.echo(f"Error: Dataset not found: {dataset_path}", err=True)
+        raise SystemExit(1)
+
+    try:
+        golden = load_golden_dataset(dataset_path)
+    except (ValueError, FileNotFoundError) as exc:
+        click.echo(f"Error loading dataset: {exc}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Loaded {len(golden)} questions from {dataset_path}")
+
+    config = load_config()
+    if not config.vault.path:
+        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
+        raise SystemExit(1)
+
+    from mneme.embeddings import get_provider
+    from mneme.search import SearchEngine
+    from mneme.store import Store
+
+    provider = get_provider(config.embedding)
+    store = Store(config.db_path, provider.dimension())
+    engine = SearchEngine(store=store, embedding_provider=provider, config=config.search)
+
+    click.echo(f"Running evaluation (top_k={top_k})...")
+    report = evaluate_retrieval(engine, golden, top_k=top_k)
+    store.close()
+
+    print_report(report)
+
+
 @main.command("hook-search")
 def hook_search():
     """BM25 hook search for Claude Code PreToolUse context injection.
