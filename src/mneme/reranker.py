@@ -20,9 +20,28 @@ class Reranker:
         if self._model is None:
             logger.info("Loading reranker model: %s", self.model_name)
             t0 = time.monotonic()
+
+            # Patch torch.distributed for ROCm Windows
+            # (module exists but is_initialized/get_rank are missing)
+            import torch
+            if not hasattr(torch, "distributed"):
+                class _DummyDistributed:
+                    pass
+                torch.distributed = _DummyDistributed()
+            if not hasattr(torch.distributed, "is_initialized"):
+                torch.distributed.is_initialized = lambda: False
+            if not hasattr(torch.distributed, "get_rank"):
+                torch.distributed.get_rank = lambda: 0
+
             from sentence_transformers import CrossEncoder
-            self._model = CrossEncoder(self.model_name)
-            logger.info("Reranker loaded in %.1fs", time.monotonic() - t0)
+
+            # Detect device — use GPU if available
+            device = "cpu"
+            if torch.cuda.is_available():
+                device = "cuda"
+
+            self._model = CrossEncoder(self.model_name, device=device)
+            logger.info("Reranker loaded on cpu in %.1fs", time.monotonic() - t0)
         return self._model
 
     def warmup(self):
