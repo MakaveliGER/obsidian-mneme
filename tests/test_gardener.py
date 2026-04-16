@@ -228,6 +228,29 @@ def test_find_orphans_excludes_patterns(tmp_path: Path):
     )
 
 
+def test_exclude_patterns_windows_backslashes(tmp_path: Path):
+    """Paths with backslashes (Windows) must still match forward-slash patterns."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    # Simulate Windows path in DB: "05 Daily Notes\2026\note.md"
+    daily = vault / "05 Daily Notes" / "2026"
+    daily.mkdir(parents=True)
+    (daily / "note.md").write_text("## Daily\n\nA daily note.", encoding="utf-8")
+
+    store, indexer, provider, config = _make_store_and_indexer(vault, tmp_path)
+    indexer.index_vault(full=True)
+    search_engine = _make_search_engine(store, provider, config)
+
+    gardener = VaultGardener(store, search_engine, exclude_patterns=["05 Daily Notes/**"])
+    orphans = gardener.find_orphans()
+    orphan_paths = [o["path"] for o in orphans]
+
+    assert not any("Daily" in p or "note" in p for p in orphan_paths), (
+        f"Daily note must be excluded by pattern, got: {orphan_paths}"
+    )
+
+
 def test_exclude_patterns_empty_no_filtering(tmp_path: Path):
     """With empty exclude_patterns all orphaned notes in subfolders are reported."""
     vault = tmp_path / "vault"

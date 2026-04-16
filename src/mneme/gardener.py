@@ -24,16 +24,25 @@ class VaultGardener:
     def _is_excluded(self, path: str) -> bool:
         """Return True if path matches any of the configured exclude patterns.
 
-        Normalizes backslashes to forward slashes before matching. A leading '/'
-        is prepended so that patterns like '**/Newsletter/**' also match paths
-        where the target directory sits at the vault root (e.g. 'Newsletter/x.md').
+        Normalizes backslashes to forward slashes before matching.
+        Handles ** glob patterns by checking path-prefix containment
+        (fnmatch doesn't support ** as recursive globstar).
         """
         normalized = path.replace("\\", "/")
-        prefixed = "/" + normalized
-        return any(
-            fnmatch.fnmatch(normalized, pattern) or fnmatch.fnmatch(prefixed, pattern)
-            for pattern in self._exclude_patterns
-        )
+        for pattern in self._exclude_patterns:
+            # Strip ** and trailing/leading slashes to get the directory name
+            # "05 Daily Notes/**" → "05 Daily Notes"
+            # "**/Newsletter/**" → "Newsletter"
+            stripped = pattern.replace("**", "").strip("/")
+            if not stripped:
+                continue
+            # Check if any path component sequence matches the stripped pattern
+            if f"/{stripped}/" in f"/{normalized}/" or normalized.startswith(f"{stripped}/"):
+                return True
+            # Fallback: standard fnmatch for non-** patterns
+            if "**" not in pattern and fnmatch.fnmatch(normalized, pattern):
+                return True
+        return False
 
     def full_report(
         self,

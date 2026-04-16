@@ -72,8 +72,8 @@ class AutoSearchConfig(BaseModel):
 class HealthConfig(BaseModel):
     # TODO(release): Before PyPI publish, change defaults to [] — every vault has different structures
     exclude_patterns: list[str] = Field(default_factory=lambda: [
-        "**/Newsletter/**",
-        "**/Daily Notes/**",
+        "04 Ressourcen/**/Newsletter/**",
+        "05 Daily Notes/**",
     ])
 
 
