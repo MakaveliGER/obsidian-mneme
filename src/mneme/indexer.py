@@ -21,6 +21,7 @@ class IndexResult:
     skipped: int
     deleted: int
     duration_seconds: float
+    links_resolved: int = 0
 
 
 class Indexer:
@@ -64,8 +65,7 @@ class Indexer:
                     continue
                 found_files.append(file_path)
 
-        # Deduplicate while preserving order (multiple patterns may match the
-        # same file).
+        # Deduplicate while preserving order
         seen: set[Path] = set()
         unique_files: list[Path] = []
         for f in found_files:
@@ -76,6 +76,8 @@ class Indexer:
         indexed = 0
         skipped = 0
         vault_paths: set[str] = set()
+        # Collect (note_id, wikilinks) for link resolution pass
+        notes_for_link_resolution: list[tuple[int, list[str]]] = []
 
         for file_path in unique_files:
             parsed = parse_note(file_path, vault_root)
@@ -85,9 +87,11 @@ class Indexer:
                 existing = self._store.get_note_by_path(parsed.path)
                 if existing and existing["content_hash"] == parsed.content_hash:
                     skipped += 1
+                    notes_for_link_resolution.append((existing["id"], existing["wikilinks"]))
                     continue
 
-            self._index_parsed(parsed)
+            note_id = self._index_parsed(parsed)
+            notes_for_link_resolution.append((note_id, parsed.wikilinks))
             indexed += 1
 
         # --- Remove orphaned notes ---
@@ -97,12 +101,19 @@ class Indexer:
             self._store.delete_note(orphan_path)
         deleted = len(orphaned)
 
+        # --- Build wikilink graph (second pass after all notes are in DB) ---
+        alias_map = self._store.build_alias_map()
+        links_resolved = 0
+        for note_id, wikilinks in notes_for_link_resolution:
+            links_resolved += self._store.resolve_and_store_links(note_id, wikilinks, alias_map)
+
         duration = time.monotonic() - start
         return IndexResult(
             indexed=indexed,
             skipped=skipped,
             deleted=deleted,
             duration_seconds=duration,
+            links_resolved=links_resolved,
         )
 
     def index_file(self, file_path: Path) -> bool:
@@ -118,7 +129,9 @@ class Indexer:
         if existing and existing["content_hash"] == parsed.content_hash:
             return False
 
-        self._index_parsed(parsed)
+        note_id = self._index_parsed(parsed)
+        alias_map = self._store.build_alias_map()
+        self._store.resolve_and_store_links(note_id, parsed.wikilinks, alias_map)
         return True
 
     def remove_file(self, path: str) -> bool:
@@ -139,15 +152,13 @@ class Indexer:
         for pattern in exclude_patterns:
             if fnmatch.fnmatch(rel_posix, pattern):
                 return True
-            # Also match when the pattern (without trailing /**) is a parent dir.
-            # E.g. ".obsidian/**" → check if rel starts with ".obsidian/"
             normalized = pattern.rstrip("*").rstrip("/")
             if normalized and rel_posix.startswith(normalized + "/"):
                 return True
         return False
 
-    def _index_parsed(self, parsed) -> None:
-        """Chunk, embed, and persist a single ParsedNote."""
+    def _index_parsed(self, parsed) -> int:
+        """Chunk, embed, and persist a single ParsedNote. Returns note_id."""
         chunks = chunk_note(
             parsed,
             self._config.chunking.max_tokens,
@@ -180,3 +191,4 @@ class Indexer:
             wikilinks=parsed.wikilinks,
         )
         self._store.upsert_chunks(note_id, chunk_data)
+        return note_id

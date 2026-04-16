@@ -83,6 +83,16 @@ class Store:
             );
         """)
 
+        # Wikilink graph (adjacency list)
+        cur.executescript("""
+            CREATE TABLE IF NOT EXISTS links (
+                source_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+                target_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+                PRIMARY KEY (source_id, target_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_id);
+        """)
+
         # FTS5 virtual table — external content mode synced with chunks
         cur.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -391,6 +401,101 @@ class Store:
         """Get all indexed note paths."""
         rows = self._conn.execute("SELECT path FROM notes").fetchall()
         return [r[0] for r in rows]
+
+    def build_alias_map(self) -> dict[str, int]:
+        """Build a map from wikilink target strings to note_ids.
+
+        Keys are basename (without .md) and full path (without .md).
+        Conflict rule: if two notes share the same basename, only full-path keys remain.
+        """
+        rows = self._conn.execute("SELECT id, path FROM notes").fetchall()
+
+        from collections import defaultdict
+        from pathlib import PurePosixPath
+
+        basename_to_ids: dict[str, list[int]] = defaultdict(list)
+        full_path_map: dict[str, int] = {}
+
+        for note_id, path in rows:
+            full_key = path[:-3] if path.endswith(".md") else path
+            full_path_map[full_key] = note_id
+            base = PurePosixPath(path).stem
+            basename_to_ids[base].append(note_id)
+
+        alias_map: dict[str, int] = {}
+        alias_map.update(full_path_map)
+
+        for base, ids in basename_to_ids.items():
+            if len(ids) == 1:
+                alias_map[base] = ids[0]
+
+        return alias_map
+
+    def resolve_and_store_links(
+        self, note_id: int, wikilinks: list[str], alias_map: dict[str, int]
+    ) -> int:
+        """Resolve wikilinks and write to links table. Returns resolved count."""
+        cur = self._conn.cursor()
+        cur.execute("DELETE FROM links WHERE source_id = ?", (note_id,))
+
+        resolved = 0
+        for wikilink in wikilinks:
+            target_id = alias_map.get(wikilink)
+            if target_id is not None and target_id != note_id:
+                cur.execute(
+                    "INSERT OR IGNORE INTO links (source_id, target_id) VALUES (?, ?)",
+                    (note_id, target_id),
+                )
+                resolved += 1
+
+        self._conn.commit()
+        return resolved
+
+    def get_linked_notes(self, note_id: int) -> list[dict]:
+        """Return outgoing links: notes that this note links to."""
+        rows = self._conn.execute(
+            """SELECT n.id, n.path, n.title FROM links l
+               JOIN notes n ON n.id = l.target_id WHERE l.source_id = ?""",
+            (note_id,),
+        ).fetchall()
+        return [{"id": r[0], "path": r[1], "title": r[2]} for r in rows]
+
+    def get_backlinks(self, note_id: int) -> list[dict]:
+        """Return incoming links: notes that link to this note."""
+        rows = self._conn.execute(
+            """SELECT n.id, n.path, n.title FROM links l
+               JOIN notes n ON n.id = l.source_id WHERE l.target_id = ?""",
+            (note_id,),
+        ).fetchall()
+        return [{"id": r[0], "path": r[1], "title": r[2]} for r in rows]
+
+    def get_graph_neighbors(self, note_id: int, depth: int = 1) -> list[dict]:
+        """Return all notes within `depth` hops (outgoing + incoming), deduplicated."""
+        visited: dict[int, dict] = {}
+        frontier: set[int] = {note_id}
+
+        for _ in range(depth):
+            next_frontier: set[int] = set()
+            for current_id in frontier:
+                for row in self._conn.execute(
+                    "SELECT n.id, n.path, n.title FROM links l JOIN notes n ON n.id = l.target_id WHERE l.source_id = ?",
+                    (current_id,),
+                ).fetchall():
+                    nid = row[0]
+                    if nid != note_id and nid not in visited:
+                        visited[nid] = {"id": row[0], "path": row[1], "title": row[2], "direction": "outgoing"}
+                        next_frontier.add(nid)
+                for row in self._conn.execute(
+                    "SELECT n.id, n.path, n.title FROM links l JOIN notes n ON n.id = l.source_id WHERE l.target_id = ?",
+                    (current_id,),
+                ).fetchall():
+                    nid = row[0]
+                    if nid != note_id and nid not in visited:
+                        visited[nid] = {"id": row[0], "path": row[1], "title": row[2], "direction": "incoming"}
+                        next_frontier.add(nid)
+            frontier = next_frontier
+
+        return list(visited.values())
 
     def close(self) -> None:
         self._conn.close()
