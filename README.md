@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="design/banner.png" alt="Mneme Banner" width="100%">
+</p>
+
 # Mneme
 
 Local MCP server for semantic Obsidian vault search. Headless RAG — Mneme indexes and searches your vault, Claude does the reasoning.
