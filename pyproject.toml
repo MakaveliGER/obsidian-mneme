@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mneme"
+version = "0.1.0"
+description = "Local MCP server for semantic Obsidian vault search"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]",
+    "sentence-transformers",
+    "sqlite-vec",
+    "pydantic-settings>=2.0",
+    "click",
+    "watchdog",
+    "pyyaml",
+    "platformdirs",
+    "tomli-w",
+]
+
+[project.scripts]
+mneme = "mneme.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mneme"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests that load ML models (deselect with '-m \"not slow\"')",
+]
