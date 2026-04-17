@@ -35,14 +35,17 @@ class Reranker:
 
             from sentence_transformers import CrossEncoder
 
-            # Force CPU for reranker — running two models on GPU simultaneously
-            # causes hangs on ROCm Windows. The reranker is small enough for CPU
-            # (~2s per query) while the embedding model handles GPU acceleration.
-            self._model = CrossEncoder(self.model_name, device="cpu")
+            # Use GPU if available — single predict works on ROCm,
+            # batch predict hangs (handled in rerank() below).
+            device = "cpu"
+            if torch.cuda.is_available():
+                device = "cuda"
 
-            # Warmup predict — first call is slow due to kernel init
+            self._model = CrossEncoder(self.model_name, device=device)
+
+            # Warmup predict — first call triggers kernel init
             self._model.predict([("warmup", "warmup")], show_progress_bar=False)
-            logger.info("Reranker loaded on cpu in %.1fs", time.monotonic() - t0)
+            logger.info("Reranker loaded on %s in %.1fs", device, time.monotonic() - t0)
         return self._model
 
     def warmup(self):
