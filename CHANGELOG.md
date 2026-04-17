@@ -6,6 +6,12 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-17
+
+PyPI debut under the `obsidian-mneme` package name (the short `mneme` slug
+was already taken on PyPI by an unrelated project). Import path stays
+`import mneme`, the CLI command stays `mneme`.
+
 ### Added
 - `mneme init` as an alias for `mneme setup`.
 - `mneme similar <path>` CLI command — semantic nearest-neighbour lookup for a
@@ -68,5 +74,6 @@ Initial public-facing release.
   AMD on Windows.
 - Golden-dataset evaluator (`mneme eval`) with Hit@k and MRR metrics.
 
-[Unreleased]: https://github.com/MakaveliGER/mneme/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/MakaveliGER/mneme/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/MakaveliGER/mneme/releases/tag/v0.3.0
 [0.2.0]: https://github.com/MakaveliGER/mneme/releases/tag/v0.2.0

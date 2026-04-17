@@ -1,6 +1,6 @@
 {
   "name": "obsidian-mneme",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Semantic vault search powered by Mneme — search, reindex, and configure your local RAG pipeline from within Obsidian.",
   "main": "main.js",
   "scripts": {

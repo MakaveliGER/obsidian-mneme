@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mneme"
-version = "0.2.0"
+name = "obsidian-mneme"
+version = "0.3.0"
 description = "Local MCP server for semantic Obsidian vault search"
 readme = "README.md"
 license = "MIT"
@@ -54,6 +54,28 @@ mneme = "mneme.cli:cli_entry"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mneme"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/mneme/**/*.py",
+    "tests/**/*.py",
+    "tests/golden_dataset.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "pyproject.toml",
+    ".env.example",
+]
+exclude = [
+    "obsidian-plugin/**",
+    "scripts/**",
+    "docs/**",
+    ".claude/**",
+    "design/**",
+    "uv.lock",
+    ".gitignore",
+    "CLAUDE.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -336,11 +336,12 @@ class Store:
 
     def get_note_by_path(self, path: str) -> dict | None:
         """Get note metadata by path."""
-        row = self._conn.execute(
-            "SELECT id, path, title, content_hash, frontmatter, tags, wikilinks, updated_at "
-            "FROM notes WHERE path = ?",
-            (path,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, path, title, content_hash, frontmatter, tags, wikilinks, updated_at "
+                "FROM notes WHERE path = ?",
+                (path,),
+            ).fetchone()
         if not row:
             return None
         return {
@@ -356,17 +357,18 @@ class Store:
 
     def vector_search(self, query_embedding: list[float], top_k: int = 10) -> list[SearchResult]:
         """KNN search via sqlite-vec. No WHERE filtering (sqlite-vec constraint)."""
-        rows = self._conn.execute(
-            """SELECT cv.chunk_id, cv.distance, c.content, c.heading_path,
-                      n.path, n.title, n.tags
-               FROM chunks_vec cv
-               JOIN chunks c ON c.id = cv.chunk_id
-               JOIN notes n ON n.id = c.note_id
-               WHERE embedding MATCH ?
-               AND k = ?
-               ORDER BY distance""",
-            (_serialize_float_vec(query_embedding), top_k),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT cv.chunk_id, cv.distance, c.content, c.heading_path,
+                          n.path, n.title, n.tags
+                   FROM chunks_vec cv
+                   JOIN chunks c ON c.id = cv.chunk_id
+                   JOIN notes n ON n.id = c.note_id
+                   WHERE embedding MATCH ?
+                   AND k = ?
+                   ORDER BY distance""",
+                (_serialize_float_vec(query_embedding), top_k),
+            ).fetchall()
 
         results = []
         for row in rows:
@@ -453,9 +455,10 @@ class Store:
             LIMIT ?
         """
 
-        rows = self._conn.execute(
-            query, [safe_query] + params + [top_k]
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                query, [safe_query] + params + [top_k]
+            ).fetchall()
 
         results = []
         for row in rows:
@@ -472,14 +475,15 @@ class Store:
 
     def get_all_chunk_embeddings_for_note(self, path: str) -> list[list[float]]:
         """Get all embeddings for chunks of a given note path."""
-        rows = self._conn.execute(
-            """SELECT cv.embedding
-               FROM chunks_vec cv
-               JOIN chunks c ON c.id = cv.chunk_id
-               JOIN notes n ON n.id = c.note_id
-               WHERE n.path = ?""",
-            (path,),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT cv.embedding
+                   FROM chunks_vec cv
+                   JOIN chunks c ON c.id = cv.chunk_id
+                   JOIN notes n ON n.id = c.note_id
+                   WHERE n.path = ?""",
+                (path,),
+            ).fetchall()
 
         embeddings = []
         for row in rows:
@@ -491,11 +495,12 @@ class Store:
 
     def get_stats(self, embedding_model: str = "") -> IndexStats:
         """Get index statistics."""
-        total_notes = self._conn.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
-        total_chunks = self._conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-        last_row = self._conn.execute(
-            "SELECT MAX(updated_at) FROM notes"
-        ).fetchone()
+        with self._lock:
+            total_notes = self._conn.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
+            total_chunks = self._conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+            last_row = self._conn.execute(
+                "SELECT MAX(updated_at) FROM notes"
+            ).fetchone()
         last_indexed = last_row[0] if last_row else None
 
         db_size = self.db_path.stat().st_size / (1024 * 1024) if self.db_path.exists() else 0.0
@@ -510,7 +515,8 @@ class Store:
 
     def get_all_note_paths(self) -> list[str]:
         """Get all indexed note paths."""
-        rows = self._conn.execute("SELECT path FROM notes").fetchall()
+        with self._lock:
+            rows = self._conn.execute("SELECT path FROM notes").fetchall()
         return [r[0] for r in rows]
 
     def get_updated_at_map(self, paths: list[str]) -> dict[str, str]:
@@ -522,10 +528,11 @@ class Store:
         if not paths:
             return {}
         placeholders = ",".join("?" * len(paths))
-        rows = self._conn.execute(
-            f"SELECT path, updated_at FROM notes WHERE path IN ({placeholders})",
-            paths,
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT path, updated_at FROM notes WHERE path IN ({placeholders})",
+                paths,
+            ).fetchall()
         return {r[0]: r[1] for r in rows}
 
     def get_centrality_map(self) -> dict[str, float]:
@@ -534,12 +541,13 @@ class Store:
         Returns dict mapping note_path to centrality in [0, 1].
         Most-linked note gets 1.0, no backlinks gets 0.0.
         """
-        rows = self._conn.execute(
-            """SELECT n.path, COUNT(l.source_id) as in_degree
-               FROM notes n
-               LEFT JOIN links l ON n.id = l.target_id
-               GROUP BY n.id"""
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT n.path, COUNT(l.source_id) as in_degree
+                   FROM notes n
+                   LEFT JOIN links l ON n.id = l.target_id
+                   GROUP BY n.id"""
+            ).fetchall()
 
         if not rows:
             return {}
@@ -628,20 +636,22 @@ class Store:
 
     def get_linked_notes(self, note_id: int) -> list[dict]:
         """Return outgoing links: notes that this note links to."""
-        rows = self._conn.execute(
-            """SELECT n.id, n.path, n.title FROM links l
-               JOIN notes n ON n.id = l.target_id WHERE l.source_id = ?""",
-            (note_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT n.id, n.path, n.title FROM links l
+                   JOIN notes n ON n.id = l.target_id WHERE l.source_id = ?""",
+                (note_id,),
+            ).fetchall()
         return [{"id": r[0], "path": r[1], "title": r[2]} for r in rows]
 
     def get_backlinks(self, note_id: int) -> list[dict]:
         """Return incoming links: notes that link to this note."""
-        rows = self._conn.execute(
-            """SELECT n.id, n.path, n.title FROM links l
-               JOIN notes n ON n.id = l.source_id WHERE l.target_id = ?""",
-            (note_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT n.id, n.path, n.title FROM links l
+                   JOIN notes n ON n.id = l.source_id WHERE l.target_id = ?""",
+                (note_id,),
+            ).fetchall()
         return [{"id": r[0], "path": r[1], "title": r[2]} for r in rows]
 
     def get_graph_neighbors(self, note_id: int, depth: int = 1) -> list[dict]:
@@ -652,18 +662,21 @@ class Store:
         for _ in range(depth):
             next_frontier: set[int] = set()
             for current_id in frontier:
-                for row in self._conn.execute(
-                    "SELECT n.id, n.path, n.title FROM links l JOIN notes n ON n.id = l.target_id WHERE l.source_id = ?",
-                    (current_id,),
-                ).fetchall():
+                with self._lock:
+                    out_rows = self._conn.execute(
+                        "SELECT n.id, n.path, n.title FROM links l JOIN notes n ON n.id = l.target_id WHERE l.source_id = ?",
+                        (current_id,),
+                    ).fetchall()
+                    in_rows = self._conn.execute(
+                        "SELECT n.id, n.path, n.title FROM links l JOIN notes n ON n.id = l.source_id WHERE l.target_id = ?",
+                        (current_id,),
+                    ).fetchall()
+                for row in out_rows:
                     nid = row[0]
                     if nid != note_id and nid not in visited:
                         visited[nid] = {"id": row[0], "path": row[1], "title": row[2], "direction": "outgoing"}
                         next_frontier.add(nid)
-                for row in self._conn.execute(
-                    "SELECT n.id, n.path, n.title FROM links l JOIN notes n ON n.id = l.source_id WHERE l.target_id = ?",
-                    (current_id,),
-                ).fetchall():
+                for row in in_rows:
                     nid = row[0]
                     if nid != note_id and nid not in visited:
                         visited[nid] = {"id": row[0], "path": row[1], "title": row[2], "direction": "incoming"}

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="design/banner.png" alt="Mneme Banner" width="100%">
+  <img src="https://raw.githubusercontent.com/MakaveliGER/mneme/main/design/banner.png" alt="Mneme Banner" width="100%">
 </p>
 
 # Mneme
@@ -15,9 +15,10 @@
 
 - **Hybrid Search** — Vector (BGE-M3, 1024-dim, multilingual) + BM25 Keyword Search mit Reciprocal Rank Fusion (RRF)
 - **8 MCP Tools** — `search_notes`, `get_similar`, `get_note_context`, `vault_stats`, `vault_health`, `reindex`, `get_config`, `update_config`
+- **3 MCP Resources + 3 MCP Prompts** — `mneme://vault/stats`, `tags`, `graph-summary` plus `research_topic`, `vault_review`, `find_connections`
 - **GraphRAG** — Wikilink-Graph mit BFS-Traversal für kontextuelle Nachbarschaft
-- **GARS-Scoring** — Graph-Aware Retrieval Scoring: gut vernetzte Notizen ranken höher
-- **CrossEncoder Reranking** — opt-in, `BAAI/bge-reranker-v2-m3`, konfigurierbarer Score-Threshold
+- **GARS-Scoring** — Graph-Aware Retrieval Scoring (opt-in, default off — bei <500 Notizen aktuell schädlich, siehe `docs/`)
+- **CrossEncoder Reranking** — opt-in, `BAAI/bge-reranker-v2-m3` (default off — siehe Hinweis bei GARS)
 - **Vault Health / Gardener** — erkennt Orphan Notes, schwache Links, Stale Notes und Duplikate
 - **Auto-Search** — Modi `off` / `smart` / `always` für automatische Context-Injection vor Tool-Calls
 - **Heading-aware Chunking** — Semantic Context Injection (Titel, Ordner, Tags pro Chunk)
@@ -29,8 +30,8 @@
 ## Quick Start
 
 ```bash
-# Install (zieht torch + sentence-transformers — insgesamt ~1.5 GB)
-pip install mneme
+# Install (zieht torch + sentence-transformers — initial ~1 GB Pakete + 2 GB Modell beim ersten Lauf)
+pip install obsidian-mneme
 
 # Setup: fragt Vault-Pfad, lädt BGE-M3 (~2 GB) und baut den initialen Index
 mneme setup        # oder: mneme init
@@ -39,9 +40,9 @@ mneme setup        # oder: mneme init
 mneme auto-search smart
 ```
 
-> **Hinweis zu torch:** `pip install mneme` installiert das CPU-torch-Wheel. Wenn du bereits eine CUDA-/ROCm-Variante von torch in der venv hast, überschreibt das deinen Install. Lösung: Nutze ein dediziertes venv (`uv venv` oder `python -m venv`).
+> **Hinweis zu torch:** `pip install obsidian-mneme` installiert das CPU-torch-Wheel. Wenn du bereits eine CUDA-/ROCm-Variante von torch in der venv hast, überschreibt das deinen Install. Lösung: Nutze ein dediziertes venv (`uv venv` oder `python -m venv`).
 
-**Erster Lauf (CPU):** ~5-15 Min — Modell-Download hängt an der Bandbreite, Index skaliert mit Vault-Größe (~3-8 Chunks/s auf CPU). Nachfolgende Starts in unter 10s.
+**Erster Lauf (CPU):** **15-25 Min** für ~1.000 Chunks (Modell-Download ~3-5 Min + Index ~1 Chunk/s auf CPU). Mit GPU (siehe unten) unter 30 Sekunden. Nachfolgende Starts unter 10s.
 
 Fehler werden als lesbare Meldungen ausgegeben. Für vollständige Tracebacks: `MNEME_DEBUG=1 mneme <command>`.
 
@@ -97,6 +98,26 @@ Falls du stattdessen [uvx](https://docs.astral.sh/uv/) nutzt und Mneme isoliert 
 
 ---
 
+## Obsidian Plugin
+
+Mneme bringt ein eigenes Obsidian-Plugin mit (`obsidian-plugin/`). Damit gibt's:
+
+- **Search-Sidebar** — Suche im Vault aus Obsidian heraus, "Ähnliche Notizen"-Tab pro aktiver Datei
+- **Health-Modal** — `vault_health` direkt aus dem Plugin
+- **Status-Bar** — Index-Stats als Live-Anzeige
+- **Settings** — alle Mneme-Configs, Server-Lifecycle (auto-start, Reindex-on-Start)
+
+Das Plugin spricht die gleiche CLI an wie Claude. Voraussetzung: `mneme`-Binary im PATH (oder Pfad in den Plugin-Settings setzen). Build:
+
+```bash
+cd obsidian-plugin && npm install && npm run build
+# Dann main.js + manifest.json + styles.css nach <vault>/.obsidian/plugins/mneme/ kopieren
+```
+
+Plugin-Submission an den Obsidian Community Store steht für eine spätere Version an.
+
+---
+
 ## CLI Commands
 
 | Command | Beschreibung |
@@ -147,6 +168,7 @@ graph_weight = 0.3
 mode = "smart"
 
 [health]
+# Beispiele — Default ist leer. Pfade per Glob, vault-relativ.
 exclude_patterns = ["Newsletter/**", "Daily Notes/**"]
 ```
 

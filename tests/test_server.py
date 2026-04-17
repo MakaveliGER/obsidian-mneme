@@ -294,8 +294,9 @@ def test_get_config_returns_dict(server_with_vault):
     # Top-level config sections must be present
     for key in ("vault", "embedding", "search"):
         assert key in result, f"Missing key '{key}' in config dict"
-    # vault.path must point to the tmp vault
-    assert result["vault"]["path"] != ""
+    # MCP get_config redacts vault.path/database.path to <set>/<unset>
+    # so prompt-injected Claude can't exfiltrate filesystem layout.
+    assert result["vault"]["path"] == "<set>"
 
 
 # ---------------------------------------------------------------------------

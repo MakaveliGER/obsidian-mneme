@@ -21,6 +21,7 @@ from mneme.config import (
 
 
 @click.group()
+@click.version_option(package_name="obsidian-mneme", message="%(prog)s %(version)s")
 def main():
     """Mneme — Local MCP server for semantic Obsidian vault search."""
     pass
@@ -355,7 +356,7 @@ def search(query: str, top_k: int, as_json: bool):
 @click.option("--json", "as_json", is_flag=True, default=True, help="Output as JSON (default).")
 def similar(path: str, top_k: int, as_json: bool):
     """Find semantically similar notes via average chunk embedding."""
-    from mneme.server import normalize_vault_path
+    from mneme.paths import normalize_vault_path
 
     normalized = normalize_vault_path(path)
     if normalized is None:

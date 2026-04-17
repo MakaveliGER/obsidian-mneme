@@ -9,3 +9,5 @@ build/
 .mypy_cache/
 .pytest_cache/
 .claude/
+node_modules/
+obsidian-plugin/main.js

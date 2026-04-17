@@ -28,22 +28,7 @@ from mneme.watcher import VaultWatcher
 logger = logging.getLogger(__name__)
 
 
-def normalize_vault_path(path: str) -> str | None:
-    """Validate and normalize a vault-relative path from untrusted input.
-
-    Rejects absolute paths and parent-directory traversal. Normalizes
-    backslashes to forward slashes so lookups match the stored form.
-    Returns None if the path is invalid.
-    """
-    if not isinstance(path, str) or not path.strip():
-        return None
-    cleaned = path.strip().replace("\\", "/")
-    # Reject absolute paths (Unix `/foo`, Windows `C:/foo`) and traversal.
-    if cleaned.startswith("/") or (len(cleaned) > 1 and cleaned[1] == ":"):
-        return None
-    if ".." in cleaned.split("/"):
-        return None
-    return cleaned
+from mneme.paths import normalize_vault_path
 
 
 def create_server(config: MnemeConfig | None = None) -> FastMCP:
@@ -212,8 +197,11 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         normalized = normalize_vault_path(path)
         if normalized is None:
             return {"error": f"Invalid vault path: {path}"}
-        depth = max(1, min(depth, 3))
-        similar_k = max(1, min(similar_k, 20))
+        # Allow `depth=0` (skip graph) and `similar_k=0` (skip similarity);
+        # both are honest "skip this part" requests, not errors. Cap upper
+        # bounds for DoS hardening.
+        depth = max(0, min(depth, 3))
+        similar_k = max(0, min(similar_k, 20))
         store = state["store"]
         note = store.get_note_by_path(normalized)
         if not note:
@@ -222,10 +210,10 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         note_id = note["id"]
 
         # Graph neighbors (linked + backlinked)
-        neighbors = store.get_graph_neighbors(note_id, depth=depth)
+        neighbors = store.get_graph_neighbors(note_id, depth=depth) if depth else []
 
         # Semantically similar notes
-        similar = state["search"].get_similar(path=normalized, top_k=similar_k)
+        similar = state["search"].get_similar(path=normalized, top_k=similar_k) if similar_k else []
 
         return {
             "note": {

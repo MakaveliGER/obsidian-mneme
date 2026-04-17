@@ -6,7 +6,7 @@ projekt: 02 Projekte/Eigenprojekte/Mneme/Mneme.md
 workflow: 04 Ressourcen/Skills, Tech & Methoden/Workflows/Projekt-Workflow.md
 
 ## Kontext
-Lokaler MCP-Server für semantische Obsidian-Vault-Suche (v0.2.0). Headless RAG — 8 MCP-Tools, Hybrid Search (Vector BGE-M3 + BM25 → RRF), CrossEncoder Reranking, GARS-Scoring, Wikilink-Graph (348 Links), Gardener (Vault Health), Auto-Search (off/smart/always). Python 3.11+, FastMCP (stdio), SQLite + sqlite-vec + FTS5, Watchdog. 208 Tests, 19 Module. GPU: Dynamic Backend Detection (auto/cpu/cuda), ROCm 87x Speedup (float16, RX 7900 XTX). Eval Baseline: Hit@1 65%, MRR 0.71. Obsidian Plugin gebaut (Settings, Search, Health, Status Bar). CLI: search, health, get-config, update-config. Golden Dataset: 66 Q&A-Paare.
+Lokaler MCP-Server für semantische Obsidian-Vault-Suche (v0.3.0, PyPI-Name `obsidian-mneme`). Headless RAG — 8 MCP-Tools + 3 Resources + 3 Prompts, Hybrid Search (Vector BGE-M3 + BM25 → RRF), CrossEncoder Reranking + GARS (beide opt-in, default off), Wikilink-Graph, Gardener (Vault Health), Auto-Search (off/smart/always). Python 3.11+, FastMCP (stdio), SQLite + sqlite-vec + FTS5, Watchdog. 235 Tests, 19+ Module. GPU: Dynamic Backend Detection (auto/cpu/cuda), ROCm 87x Speedup (float16, RX 7900 XTX). Eval Baseline: Hit@1 65%, MRR 0.71. Obsidian Plugin gebaut (Settings, Search, Health, Status Bar). CLI: search, similar, health, get-config, update-config. Golden Dataset: 66 Q&A-Paare.
 ⚠️ Bei Stack-Änderungen oder Architektur-Pivots sofort aktualisieren — neue Sessions starten mit diesem Bild.
 
 ## Intent
