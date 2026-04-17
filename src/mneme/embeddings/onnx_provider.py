@@ -40,10 +40,6 @@ _BACKEND_TO_EP: dict[str, str] = {
     "rocm": "ROCMExecutionProvider",
 }
 
-# Default ONNX model repo on HuggingFace (pre-converted BGE-M3)
-_DEFAULT_ONNX_REPO = "aapot/bge-m3-onnx"
-
-
 class ONNXProvider(EmbeddingProvider):
     """Embedding provider using ONNX Runtime.
 

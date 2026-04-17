@@ -137,6 +137,12 @@ class ConfigUpdateError(ValueError):
     """Raised when a config update cannot be applied (unknown key or bad value)."""
 
 
+# Sections whose values (model names) trigger arbitrary code-loading via
+# HuggingFace `trust_remote_code`. Blocked from the MCP `update_config` tool so
+# prompt-injected notes cannot swap the embedding/reranker model.
+MCP_FORBIDDEN_SECTIONS: frozenset[str] = frozenset({"embedding", "reranking"})
+
+
 def apply_config_update(
     config: MnemeConfig, key: str, value: str
 ) -> tuple[str, object, object]:

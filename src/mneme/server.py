@@ -10,6 +10,7 @@ import time
 from mcp.server.fastmcp import FastMCP
 
 from mneme.config import (
+    MCP_FORBIDDEN_SECTIONS,
     ConfigUpdateError,
     MnemeConfig,
     apply_config_update,
@@ -56,7 +57,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
     state: dict = {}
 
     def _initialize() -> None:
-        t0 = time.time()
+        t0 = time.monotonic()
         logger.info("Mneme initializing...")
 
         provider = get_provider(config.embedding)
@@ -92,7 +93,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
             state["watcher"] = watcher
             atexit.register(watcher.stop)
 
-        logger.info("Mneme ready (%.1fs)", time.time() - t0)
+        logger.info("Mneme ready (%.1fs)", time.monotonic() - t0)
 
     # Initialize eagerly — block until model is loaded
     try:
@@ -132,6 +133,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         err = _check_init()
         if err:
             return err
+        top_k = max(1, min(top_k, 100))
         start = time.monotonic()
         results = state["search"].search(
             query=query,
@@ -176,6 +178,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         normalized = normalize_vault_path(path)
         if normalized is None:
             return {"error": f"Invalid vault path: {path}"}
+        top_k = max(1, min(top_k, 50))
         results = state["search"].get_similar(path=normalized, top_k=top_k)
 
         return {
@@ -209,6 +212,8 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         normalized = normalize_vault_path(path)
         if normalized is None:
             return {"error": f"Invalid vault path: {path}"}
+        depth = max(1, min(depth, 3))
+        similar_k = max(0, min(similar_k, 20))
         store = state["store"]
         note = store.get_note_by_path(normalized)
         if not note:
@@ -220,7 +225,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         neighbors = store.get_graph_neighbors(note_id, depth=depth)
 
         # Semantically similar notes
-        similar = state["search"].get_similar(path=normalized, top_k=similar_k)
+        similar = state["search"].get_similar(path=normalized, top_k=similar_k) if similar_k else []
 
         return {
             "note": {
@@ -272,9 +277,12 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Indexing results with counts of indexed, skipped, and deleted notes.
         """
+        err = _check_init()
+        if err:
+            return err
         result = state["indexer"].index_vault(full=full)
         # Invalidate centrality cache after reindex (graph may have changed)
-        state["search"]._centrality_map = None
+        state["search"].invalidate_centrality_cache()
         return {
             "indexed": result.indexed,
             "skipped": result.skipped,
@@ -289,6 +297,9 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Current configuration as a dictionary.
         """
+        err = _check_init()
+        if err:
+            return err
         return state["config"].model_dump()
 
     @mcp.tool()
@@ -302,14 +313,14 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Updated key with old and new values. Note: some changes require restart.
         """
-        # Security: block settings that trigger arbitrary code-loading
-        # (HuggingFace model names can execute remote code via trust_remote_code).
-        # Both `embedding.model` and `reranking.model` load models by name.
-        _MCP_FORBIDDEN_SECTIONS = {"embedding", "reranking"}
-        if key.split(".", 1)[0] in _MCP_FORBIDDEN_SECTIONS:
+        err = _check_init()
+        if err:
+            return err
+        section_name = key.split(".", 1)[0]
+        if section_name in MCP_FORBIDDEN_SECTIONS:
             return {
                 "error": (
-                    f"Section '{key.split('.')[0]}' cannot be modified via MCP. "
+                    f"Section '{section_name}' cannot be modified via MCP. "
                     f"Use `mneme update-config {key} <value>` on the CLI."
                 )
             }

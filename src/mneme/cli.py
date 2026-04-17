@@ -444,7 +444,6 @@ def hook_search():
 
     # BM25-only search (no embedding model load — fast path)
     try:
-        import sqlite3
         from mneme.store import Store
 
         # Open store with a dummy embedding dim (we only use BM25)

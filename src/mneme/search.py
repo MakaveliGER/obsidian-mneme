@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from mneme.store import Store, SearchResult
 from mneme.embeddings.base import EmbeddingProvider
 from mneme.reranker import Reranker
+
+logger = logging.getLogger(__name__)
 
 
 def rrf_fusion(
@@ -113,8 +117,18 @@ class SearchEngine:
                 continue
             if folders and not any(r.note_path.startswith(f) for f in folders):
                 continue
-            # after-filter intentionally skipped: SearchResult has no updated_at
             vector_results.append(r)
+
+        # `after` cutoff: BM25 pre-filters in SQL, vector needs a post-filter
+        # because SearchResult carries no updated_at. Fetch the map in one
+        # query (only when the filter is set).
+        if after and vector_results:
+            updated_map = self.store.get_updated_at_map(
+                list({r.note_path for r in vector_results})
+            )
+            vector_results = [
+                r for r in vector_results if updated_map.get(r.note_path, "") >= after
+            ]
 
         # --- BM25 search (pre-filtered via SQL) ---
         bm25_results = self.store.bm25_search(
@@ -148,8 +162,8 @@ class SearchEngine:
                 import torch
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("torch.cuda.synchronize skipped: %s", e)
             results = self.reranker.rerank(query, fused, top_k)
         else:
             results = fused[:top_k]

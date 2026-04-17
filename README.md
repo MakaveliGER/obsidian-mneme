@@ -88,14 +88,17 @@ Füge das zur `.claude/mcp.json` deines Projekts oder Vaults hinzu:
 |---|---|
 | `mneme setup` / `mneme init` | Interaktiver Setup-Wizard |
 | `mneme serve` | MCP Server starten (stdio) |
+| `mneme search <query>` | Hybrid-Suche (CLI, JSON-Output) |
+| `mneme similar <path>` | Semantisch ähnliche Notizen finden |
 | `mneme reindex` | Inkrementelle Re-Indexierung |
-| `mneme reindex --full` | Vollständige Re-Indexierung |
+| `mneme reindex --full` | Vollständige Re-Indexierung (Schema-Migration) |
 | `mneme status` | Index-Statistiken anzeigen |
-| `mneme auto-search off` | Auto-Search deaktivieren |
-| `mneme auto-search smart` | Auto-Search: nur bei relevanten Queries |
-| `mneme auto-search always` | Auto-Search: immer aktiv |
+| `mneme health` | Vault-Diagnose (Orphans, Duplikate, Stale) |
+| `mneme get-config` / `update-config` | Konfiguration lesen/schreiben |
+| `mneme auto-search off/smart/always` | Auto-Search-Modus setzen |
 | `mneme hook-search` | Intern — PreToolUse Hook für Auto-Search |
-| `mneme install-hooks` | Claude Code Hooks installieren |
+| `mneme install-hooks [--force]` | Claude Code Hooks installieren. `--force` umgeht den Vault-Safety-Check. |
+| `mneme eval` | Retrieval-Qualität gegen Golden Dataset messen |
 
 ---
 
@@ -131,6 +134,23 @@ mode = "smart"
 [health]
 exclude_patterns = ["Newsletter/**", "Daily Notes/**"]
 ```
+
+Alle Werte lassen sich auch per `mneme update-config <key> <value>` oder per Umgebungsvariable `MNEME_<SECTION>__<KEY>` (siehe `.env.example`) setzen.
+
+---
+
+## Troubleshooting
+
+| Fehler | Ursache | Fix |
+|---|---|---|
+| `MnemeSchemaError: Legacy DB detected` | DB wurde mit einer älteren Mneme-Version gebaut | `mneme reindex --full` |
+| `Failed to load sqlite-vec extension` | sqlite-vec Binary fehlt / inkompatibel mit SQLite-Version | `pip install --force-reinstall sqlite-vec` |
+| `Mneme nicht gefunden: "mneme"` (Plugin) | Binary nicht im PATH | Plugin-Settings → `mnemePath` auf den vollen Pfad setzen, z.B. `.venv/Scripts/mneme.exe` |
+| Modell-Download hängt auf 0% | Proxy / Firewall blockt HuggingFace | `HF_HUB_ENABLE_HF_TRANSFER=0` setzen, oder Modell manuell cachen via `HF_HOME` |
+| GPU wird nicht genutzt | Dev-Env hat keinen Accelerator | Siehe "GPU-Support" oben; `mneme update-config embedding.device cuda` |
+| "No vault path configured" | `mneme setup` noch nicht gelaufen | `mneme setup` oder `mneme init` |
+
+Für die vollständige Fehlermeldung: `MNEME_DEBUG=1 mneme <command>`.
 
 ---
 

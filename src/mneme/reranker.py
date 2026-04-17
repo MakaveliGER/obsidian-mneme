@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import time
 
+# Apply the torch.distributed shim before sentence-transformers is imported.
+from mneme import _torch_compat  # noqa: F401
 from mneme.store import SearchResult
 
 logger = logging.getLogger(__name__)
@@ -21,18 +23,7 @@ class Reranker:
             logger.info("Loading reranker model: %s", self.model_name)
             t0 = time.monotonic()
 
-            # Patch torch.distributed for ROCm Windows
-            # (module exists but is_initialized/get_rank are missing)
             import torch
-            if not hasattr(torch, "distributed"):
-                class _DummyDistributed:
-                    pass
-                torch.distributed = _DummyDistributed()
-            if not hasattr(torch.distributed, "is_initialized"):
-                torch.distributed.is_initialized = lambda: False
-            if not hasattr(torch.distributed, "get_rank"):
-                torch.distributed.get_rank = lambda: 0
-
             from sentence_transformers import CrossEncoder
 
             # Use GPU if available — single predict works on ROCm,

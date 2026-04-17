@@ -63,6 +63,7 @@ class Store:
         self.db_path = db_path
         self.embedding_dim = embedding_dim
         self._lock = threading.Lock()
+        self._alias_map_cache: dict[str, int] | None = None
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -218,6 +219,14 @@ class Store:
 
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
+            # Alias map depends only on (id, path) — detect whether this is a
+            # new insert and keep the cache valid for content-only updates.
+            existing = self._conn.execute(
+                "SELECT 1 FROM notes WHERE path = ?", (path,)
+            ).fetchone()
+            if existing is None:
+                self._alias_map_cache = None
+
             self._conn.execute(
                 """INSERT INTO notes (path, title, content_hash, frontmatter, tags, wikilinks, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -315,6 +324,7 @@ class Store:
                     cur.executemany("DELETE FROM chunks_vec WHERE chunk_id = ?", old_ids)
                 cur.execute("DELETE FROM notes WHERE id = ?", (note_id,))
                 self._conn.commit()
+                self._alias_map_cache = None
             except Exception:
                 self._conn.rollback()
                 raise
@@ -499,6 +509,21 @@ class Store:
         rows = self._conn.execute("SELECT path FROM notes").fetchall()
         return [r[0] for r in rows]
 
+    def get_updated_at_map(self, paths: list[str]) -> dict[str, str]:
+        """Return a {path: updated_at} map for the given paths.
+
+        Used by the search engine to apply an ``after`` cutoff to vector
+        results (BM25 pre-filters in SQL, vector results need a post-filter).
+        """
+        if not paths:
+            return {}
+        placeholders = ",".join("?" * len(paths))
+        rows = self._conn.execute(
+            f"SELECT path, updated_at FROM notes WHERE path IN ({placeholders})",
+            paths,
+        ).fetchall()
+        return {r[0]: r[1] for r in rows}
+
     def get_centrality_map(self) -> dict[str, float]:
         """Get normalized in-degree centrality for all notes.
 
@@ -526,7 +551,12 @@ class Store:
 
         Keys are basename (without .md) and full path (without .md).
         Conflict rule: if two notes share the same basename, only full-path keys remain.
+
+        Result is cached; invalidated when notes are added or deleted. Content
+        updates to an existing note leave the cache valid.
         """
+        if self._alias_map_cache is not None:
+            return self._alias_map_cache
         rows = self._conn.execute("SELECT id, path FROM notes").fetchall()
 
         from collections import defaultdict
@@ -550,6 +580,7 @@ class Store:
             if len(ids) == 1:
                 alias_map[base] = ids[0]
 
+        self._alias_map_cache = alias_map
         return alias_map
 
     def resolve_and_store_links(

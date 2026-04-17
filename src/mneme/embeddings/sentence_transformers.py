@@ -2,32 +2,12 @@ import logging
 import os
 import time
 
+# Apply the torch.distributed shim before anything may trigger a
+# sentence-transformers import.
+from mneme import _torch_compat  # noqa: F401
 from mneme.embeddings.base import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
-
-# Patch torch.distributed for ROCm Windows — must happen before
-# sentence_transformers is imported anywhere (embedding or reranker).
-try:
-    import torch
-    if not hasattr(torch, "distributed"):
-        class _DummyDistributed:
-            pass
-        torch.distributed = _DummyDistributed()
-    if not hasattr(torch.distributed, "is_initialized"):
-        torch.distributed.is_initialized = lambda: False
-    if not hasattr(torch.distributed, "get_rank"):
-        torch.distributed.get_rank = lambda: 0
-except ImportError:
-    pass
-
-# dtype string → torch dtype mapping (resolved lazily after torch import)
-_DTYPE_MAP = {
-    "float32": "float32",
-    "float16": "float16",
-    "bfloat16": "bfloat16",
-}
-
 
 def detect_device(requested: str = "auto") -> tuple[str, bool]:
     """Detect the best available compute device.
