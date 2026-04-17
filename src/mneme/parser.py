@@ -136,7 +136,7 @@ def parse_note(file_path: Path, vault_root: Path) -> ParsedNote:
     raw = file_path.read_text(encoding="utf-8-sig")  # handles BOM on Windows
 
     content_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    relative_path = str(file_path.relative_to(vault_root))
+    relative_path = file_path.relative_to(vault_root).as_posix()
 
     frontmatter, body = parse_frontmatter(raw)
 

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 import click
 
 from mneme.config import (
+    ConfigUpdateError,
     MnemeConfig,
     VaultConfig,
+    apply_config_update,
     config_path,
     load_config,
     save_config,
@@ -65,6 +68,13 @@ def setup():
     click.echo(f"\nDone! Indexed {result.indexed} notes in {result.duration_seconds:.1f}s")
     click.echo(f"Database: {config.db_path}")
     click.echo(f"\nStart the MCP server with: mneme serve")
+
+
+@main.command(name="init")
+@click.pass_context
+def init(ctx: click.Context) -> None:
+    """Alias for `setup` — interactive setup wizard."""
+    ctx.invoke(setup)
 
 
 @main.command()
@@ -280,40 +290,12 @@ def get_config(as_json: bool):
 def update_config(key: str, value: str):
     """Update a config setting. Use dot-notation (e.g. embedding.device cuda)."""
     config = load_config()
-    parts = key.split(".")
-
-    if len(parts) != 2:
-        click.echo(f"Error: Key must be 'section.setting', got '{key}'", err=True)
-        raise SystemExit(1)
-
-    section_name, setting_name = parts
-    section = getattr(config, section_name, None)
-    if section is None:
-        click.echo(f"Error: Unknown section: {section_name}", err=True)
-        raise SystemExit(1)
-
-    if not hasattr(section, setting_name):
-        click.echo(f"Error: Unknown setting: {key}", err=True)
-        raise SystemExit(1)
-
-    old_value = getattr(section, setting_name)
-    target_type = type(old_value)
     try:
-        if target_type == bool:
-            parsed = value.lower() in ("true", "1", "yes")
-        elif target_type == int:
-            parsed = int(value)
-        elif target_type == float:
-            parsed = float(value)
-        elif target_type == list:
-            parsed = json.loads(value)
-        else:
-            parsed = value
-    except (ValueError, TypeError) as e:
-        click.echo(f"Error: Cannot parse '{value}' as {target_type.__name__}: {e}", err=True)
-        raise SystemExit(1)
+        _, old_value, parsed = apply_config_update(config, key, value)
+    except ConfigUpdateError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from e
 
-    setattr(section, setting_name, parsed)
     save_config(config)
     click.echo(f"{key}: {old_value} → {parsed}")
 
@@ -363,6 +345,51 @@ def search(query: str, top_k: int, as_json: bool):
             click.echo(f"  [{r.score:.4f}] {r.note_title} ({r.note_path})")
 
 
+@main.command("similar")
+@click.argument("path")
+@click.option("--top-k", default=5, show_default=True, help="Number of similar notes.")
+@click.option("--json", "as_json", is_flag=True, default=True, help="Output as JSON (default).")
+def similar(path: str, top_k: int, as_json: bool):
+    """Find semantically similar notes via average chunk embedding."""
+    config = load_config()
+    if not config.vault.path:
+        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
+        raise SystemExit(1)
+
+    from mneme.embeddings import get_provider
+    from mneme.search import SearchEngine
+    from mneme.store import Store
+
+    provider = get_provider(config.embedding)
+    store = Store(config.db_path, provider.dimension())
+    engine = SearchEngine(store=store, embedding_provider=provider, config=config.search)
+    results = engine.get_similar(path, top_k=top_k)
+    store.close()
+
+    output = {
+        "results": [
+            {
+                "path": r.note_path,
+                "title": r.note_title,
+                "heading_path": r.heading_path,
+                "content": r.content[:1500],
+                "score": round(r.score, 4),
+                "tags": r.tags,
+            }
+            for r in results
+        ],
+        "source_path": path,
+        "total_results": len(results),
+    }
+
+    if as_json:
+        click.echo(json.dumps(output, ensure_ascii=False))
+    else:
+        click.echo(f"Found {len(results)} similar notes for: {path}")
+        for r in results:
+            click.echo(f"  [{r.score:.4f}] {r.note_title} ({r.note_path})")
+
+
 @main.command("hook-search")
 def hook_search():
     """BM25 hook search for Claude Code PreToolUse context injection.
@@ -383,6 +410,7 @@ def hook_search():
     # Extract query from tool_input — for Read tool this is the file_path,
     # but we use it as a search seed (basename is often meaningful).
     query = _extract_query(hook_data)
+    source_path = _extract_source_path(hook_data)
 
     if not query:
         # No query → emit empty context, let Claude proceed
@@ -408,11 +436,17 @@ def hook_search():
         # Use dim=1 to avoid loading anything; Store._load_extensions is needed
         # for sqlite-vec but the BM25 path doesn't touch chunks_vec.
         store = Store(config.db_path, embedding_dim=1)
-        results = store.bm25_search(query, top_k=3)
+        # Fetch extra candidates so we still have enough after self-filter
+        results = store.bm25_search(query, top_k=4 if source_path else 3)
         store.close()
     except Exception:
         _emit_context(None)
         return
+
+    # Filter the note Claude is about to read — otherwise the hook returns
+    # the file itself as top result (noise, not signal).
+    if source_path:
+        results = [r for r in results if r.note_path != source_path][:3]
 
     if not results:
         _emit_context(None)
@@ -461,6 +495,27 @@ def _extract_query(hook_data: dict) -> str:
     return ""
 
 
+def _extract_source_path(hook_data: dict) -> str | None:
+    """Return the vault-relative path of the note Claude is about to read.
+
+    Used to exclude the source file from hook-search results (otherwise the
+    hook injects the file Claude is already opening — noise, not signal).
+    Returns None for non-Read tools.
+    """
+    tool_input = hook_data.get("tool_input", {})
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        return None
+    try:
+        config = load_config()
+        vault_root = Path(config.vault.path).resolve()
+        abs_path = Path(file_path).resolve()
+        rel = abs_path.relative_to(vault_root)
+        return str(rel).replace("\\", "/")
+    except Exception:
+        return None
+
+
 def _emit_context(context: str | None) -> None:
     """Write Claude Code PreToolUse additionalContext JSON to stdout and exit 0."""
     if not context:
@@ -497,7 +552,12 @@ def _emit_context(context: str | None) -> None:
     show_default=True,
     help="Which Claude Code settings file to update.",
 )
-def install_hooks(vault_path: str | None, settings_file: str):
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Skip the safety check when --vault-path differs from the configured vault.",
+)
+def install_hooks(vault_path: str | None, settings_file: str, force: bool):
     """Install Mneme PreToolUse hook into .claude/settings[.local].json.
 
     Reads the existing settings file (if any), merges the Mneme hook
@@ -505,20 +565,36 @@ def install_hooks(vault_path: str | None, settings_file: str):
     """
     from mneme.hooks import generate_hook_config
 
-    # Resolve vault path
+    # Resolve configured vault (source of truth for the safety check below)
+    try:
+        configured_vault = Path(load_config().vault.path).resolve() if load_config().vault.path else None
+    except Exception:
+        configured_vault = None
+
+    # Resolve requested vault path
     if vault_path:
         resolved_vault = Path(vault_path).resolve()
     else:
-        try:
-            config = load_config()
-            resolved_vault = Path(config.vault.path).resolve() if config.vault.path else None
-        except Exception:
-            resolved_vault = None
+        resolved_vault = configured_vault
 
     if not resolved_vault or not resolved_vault.exists():
         click.echo(
             "Error: Could not determine vault path. "
             "Pass --vault-path or run 'mneme setup' first.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    # Safety check: refuse to install hooks into a directory that isn't the
+    # configured Mneme vault unless the user explicitly passes --force.
+    # Prevents accidentally installing `mneme hook-search` as a PreToolUse hook
+    # in unrelated repos.
+    if configured_vault and resolved_vault != configured_vault and not force:
+        click.echo(
+            f"Error: --vault-path ({resolved_vault}) does not match the configured "
+            f"Mneme vault ({configured_vault}).\n"
+            "Pass --force if you really want to install the hook outside the "
+            "configured vault.",
             err=True,
         )
         raise SystemExit(1)
@@ -636,3 +712,26 @@ def _deep_merge_hooks(base: dict, override: dict) -> dict:
         result["hooks"] = base_hooks
 
     return result
+
+
+def cli_entry() -> None:
+    """Entry point with user-friendly error handling.
+
+    Click handles its own errors (Abort, ClickException). This wrapper
+    catches Python exceptions and shows a concise message. Set MNEME_DEBUG=1
+    for the full traceback.
+    """
+    try:
+        main()
+    except KeyboardInterrupt:
+        click.echo("\nAborted.", err=True)
+        sys.exit(130)
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        if os.environ.get("MNEME_DEBUG"):
+            raise
+        click.echo(f"Error: {type(e).__name__}: {e}", err=True)
+        click.echo("Run with MNEME_DEBUG=1 for full traceback.", err=True)
+        sys.exit(1)

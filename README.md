@@ -29,15 +29,23 @@
 ## Quick Start
 
 ```bash
-# Install
+# Install (CPU)
 pip install mneme
 
-# Setup (interactive wizard)
-mneme setup
+# Optional: GPU-Support
+pip install mneme[cuda]       # NVIDIA
+pip install mneme[directml]   # AMD/Intel (Windows)
+
+# Setup: fragt Vault-Pfad, lädt BGE-M3 (~2 GB) und baut den initialen Index
+mneme setup        # oder: mneme init
 
 # Auto-Search konfigurieren (empfohlen)
 mneme auto-search smart
 ```
+
+**Erster Lauf:** ~3-5 Min (Modell-Download + Index). Nachfolgende Läufe starten in unter 10s.
+
+Fehler werden als lesbare Meldungen ausgegeben. Für vollständige Tracebacks: `MNEME_DEBUG=1 mneme <command>`.
 
 ---
 
@@ -70,7 +78,7 @@ Füge das zur `.claude/mcp.json` deines Projekts oder Vaults hinzu:
 
 | Command | Beschreibung |
 |---|---|
-| `mneme setup` | Interaktiver Setup-Wizard |
+| `mneme setup` / `mneme init` | Interaktiver Setup-Wizard |
 | `mneme serve` | MCP Server starten (stdio) |
 | `mneme reindex` | Inkrementelle Re-Indexierung |
 | `mneme reindex --full` | Vollständige Re-Indexierung |

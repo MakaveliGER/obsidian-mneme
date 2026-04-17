@@ -41,7 +41,7 @@ Repository = "https://github.com/MakaveliGER/mneme"
 Issues = "https://github.com/MakaveliGER/mneme/issues"
 
 [project.scripts]
-mneme = "mneme.cli:main"
+mneme = "mneme.cli:cli_entry"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mneme"]

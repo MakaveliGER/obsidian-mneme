@@ -9,7 +9,13 @@ import time
 
 from mcp.server.fastmcp import FastMCP
 
-from mneme.config import MnemeConfig, load_config, save_config
+from mneme.config import (
+    ConfigUpdateError,
+    MnemeConfig,
+    apply_config_update,
+    load_config,
+    save_config,
+)
 from mneme.embeddings import get_provider
 from mneme.gardener import VaultGardener
 from mneme.indexer import Indexer
@@ -19,6 +25,24 @@ from mneme.store import Store
 from mneme.watcher import VaultWatcher
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_vault_path(path: str) -> str | None:
+    """Validate and normalize a vault-relative path from an MCP tool input.
+
+    Rejects absolute paths and parent-directory traversal. Normalizes
+    backslashes to forward slashes so lookups match the stored form.
+    Returns None if the path is invalid.
+    """
+    if not isinstance(path, str) or not path.strip():
+        return None
+    cleaned = path.strip().replace("\\", "/")
+    # Reject absolute paths (Unix `/foo`, Windows `C:/foo`) and traversal.
+    if cleaned.startswith("/") or (len(cleaned) > 1 and cleaned[1] == ":"):
+        return None
+    if ".." in cleaned.split("/"):
+        return None
+    return cleaned
 
 
 def create_server(config: MnemeConfig | None = None) -> FastMCP:
@@ -149,7 +173,10 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         err = _check_init()
         if err:
             return err
-        results = state["search"].get_similar(path=path, top_k=top_k)
+        normalized = _normalize_vault_path(path)
+        if normalized is None:
+            return {"error": f"Invalid vault path: {path}"}
+        results = state["search"].get_similar(path=normalized, top_k=top_k)
 
         return {
             "results": [
@@ -160,7 +187,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
                 }
                 for r in results
             ],
-            "source_path": path,
+            "source_path": normalized,
             "total_results": len(results),
         }
 
@@ -179,10 +206,13 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         err = _check_init()
         if err:
             return err
+        normalized = _normalize_vault_path(path)
+        if normalized is None:
+            return {"error": f"Invalid vault path: {path}"}
         store = state["store"]
-        note = store.get_note_by_path(path)
+        note = store.get_note_by_path(normalized)
         if not note:
-            return {"error": f"Note not found: {path}"}
+            return {"error": f"Note not found: {normalized}"}
 
         note_id = note["id"]
 
@@ -190,7 +220,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         neighbors = store.get_graph_neighbors(note_id, depth=depth)
 
         # Semantically similar notes
-        similar = state["search"].get_similar(path=path, top_k=similar_k)
+        similar = state["search"].get_similar(path=normalized, top_k=similar_k)
 
         return {
             "note": {
@@ -272,52 +302,31 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Updated key with old and new values. Note: some changes require restart.
         """
+        # Security: block settings that trigger arbitrary code-loading
+        # (HuggingFace model names can execute remote code via trust_remote_code).
+        # Changing these also requires a reindex, which belongs in the CLI.
+        _MCP_FORBIDDEN_SECTIONS = {"embedding"}
+        if key.split(".", 1)[0] in _MCP_FORBIDDEN_SECTIONS:
+            return {
+                "error": (
+                    f"Section '{key.split('.')[0]}' cannot be modified via MCP. "
+                    f"Use `mneme update-config {key} <value>` on the CLI."
+                )
+            }
+
         cfg = state["config"]
-        parts = key.split(".")
-
-        if len(parts) != 2:
-            return {"error": f"Key must be in format 'section.setting', got '{key}'"}
-
-        section_name, setting_name = parts
-        section = getattr(cfg, section_name, None)
-        if section is None:
-            return {"error": f"Unknown config section: {section_name}"}
-
-        if not hasattr(section, setting_name):
-            return {"error": f"Unknown setting: {key}"}
-
-        old_value = getattr(section, setting_name)
-
-        # Parse value to match existing type
-        target_type = type(old_value)
         try:
-            if target_type == bool:
-                parsed = value.lower() in ("true", "1", "yes")
-            elif target_type == int:
-                parsed = int(value)
-            elif target_type == float:
-                parsed = float(value)
-            elif target_type == list:
-                import json
-                parsed = json.loads(value)
-            else:
-                parsed = value
-        except (ValueError, TypeError) as e:
-            return {"error": f"Cannot parse '{value}' as {target_type.__name__}: {e}"}
+            _, old_value, parsed = apply_config_update(cfg, key, value)
+        except ConfigUpdateError as e:
+            return {"error": str(e)}
 
-        setattr(section, setting_name, parsed)
         save_config(cfg)
 
-        needs_restart = key.startswith("embedding.")
-        result = {
+        return {
             "updated_key": key,
             "old_value": str(old_value),
             "new_value": str(parsed),
         }
-        if needs_restart:
-            result["warning"] = "Embedding settings changed — run 'reindex --full' to apply."
-
-        return result
 
     @mcp.tool()
     def vault_health(

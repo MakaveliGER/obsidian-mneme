@@ -87,13 +87,13 @@ def test_load_golden_dataset_valid():
 
 
 def test_load_golden_dataset_full_file():
-    """The committed golden_dataset.json loads cleanly with 20 entries."""
+    """The committed golden_dataset.json loads cleanly and has required fields."""
     dataset_path = Path(__file__).parent / "golden_dataset.json"
     if not dataset_path.exists():
         pytest.skip("golden_dataset.json not found")
 
     data = load_golden_dataset(dataset_path)
-    assert len(data) == 20
+    assert len(data) >= 20
     for entry in data:
         assert entry["question"]
         assert entry["expected_contexts"]

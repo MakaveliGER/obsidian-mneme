@@ -125,6 +125,14 @@ export class MnemeClient {
     return result.results || [];
   }
 
+  /** Find semantically similar notes via average chunk embedding */
+  async similar(path: string, topK?: number): Promise<SearchResult[]> {
+    const args = ["similar", path, "--json"];
+    if (topK) args.push("--top-k", String(topK));
+    const result = (await this.runArgs(args)) as { results?: SearchResult[] };
+    return result.results || [];
+  }
+
   /** Get vault statistics */
   async getStatus(): Promise<VaultStats> {
     return (await this.runArgs(["status", "--json"])) as VaultStats;

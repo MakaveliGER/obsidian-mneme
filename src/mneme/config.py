@@ -131,3 +131,53 @@ def save_config(config: MnemeConfig, path: Path | None = None) -> Path:
     with open(toml_path, "wb") as f:
         tomli_w.dump(data, f)
     return toml_path
+
+
+class ConfigUpdateError(ValueError):
+    """Raised when a config update cannot be applied (unknown key or bad value)."""
+
+
+def apply_config_update(
+    config: MnemeConfig, key: str, value: str
+) -> tuple[str, object, object]:
+    """Parse *value* into the existing setting's type and apply it on *config*.
+
+    Returns ``(key, old_value, new_value)``. Raises ``ConfigUpdateError`` for
+    invalid keys or values. The caller is responsible for persisting (save_config).
+    """
+    import json as _json
+
+    parts = key.split(".")
+    if len(parts) != 2:
+        raise ConfigUpdateError(f"Key must be 'section.setting', got '{key}'")
+
+    section_name, setting_name = parts
+    section = getattr(config, section_name, None)
+    if section is None:
+        raise ConfigUpdateError(f"Unknown section: {section_name}")
+    if not hasattr(section, setting_name):
+        raise ConfigUpdateError(f"Unknown setting: {key}")
+
+    old_value = getattr(section, setting_name)
+    target_type = type(old_value)
+    try:
+        if target_type is bool:
+            parsed = value.lower() in ("true", "1", "yes")
+        elif target_type is int:
+            parsed = int(value)
+        elif target_type is float:
+            parsed = float(value)
+        elif target_type is list:
+            parsed = _json.loads(value)
+        else:
+            parsed = value
+    except (ValueError, TypeError) as e:
+        hint = ""
+        if target_type is list:
+            hint = " (lists must be JSON arrays, e.g. '[\"a\",\"b\"]')"
+        raise ConfigUpdateError(
+            f"Cannot parse '{value}' as {target_type.__name__}: {e}{hint}"
+        ) from e
+
+    setattr(section, setting_name, parsed)
+    return key, old_value, parsed

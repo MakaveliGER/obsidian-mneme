@@ -189,32 +189,38 @@ class Store:
         with self._lock:
             cur = self._conn.cursor()
             try:
-                # Get existing chunk IDs for vec cleanup
-                old_ids = [
-                    r[0]
-                    for r in cur.execute(
-                        "SELECT id FROM chunks WHERE note_id = ?", (note_id,)
-                    ).fetchall()
-                ]
-
-                # Delete from vec table first (no CASCADE from chunks)
-                for old_id in old_ids:
-                    cur.execute("DELETE FROM chunks_vec WHERE chunk_id = ?", (old_id,))
+                # Delete old vec rows in one query (no CASCADE from chunks).
+                cur.execute(
+                    "DELETE FROM chunks_vec WHERE chunk_id IN "
+                    "(SELECT id FROM chunks WHERE note_id = ?)",
+                    (note_id,),
+                )
 
                 # Delete old chunks (triggers handle FTS5 cleanup)
                 cur.execute("DELETE FROM chunks WHERE note_id = ?", (note_id,))
 
-                # Insert new chunks
-                for chunk in chunks:
-                    cur.execute(
+                if chunks:
+                    # Bulk-insert chunks, then bulk-insert their vec rows.
+                    cur.executemany(
                         """INSERT INTO chunks (note_id, content, heading_path, chunk_index)
                            VALUES (?, ?, ?, ?)""",
-                        (note_id, chunk.content, chunk.heading_path, chunk.chunk_index),
+                        [(note_id, c.content, c.heading_path, c.chunk_index) for c in chunks],
                     )
-                    chunk_id = cur.lastrowid
-                    cur.execute(
+                    # Fetch the newly-inserted IDs in insertion order (chunk_index
+                    # is unique per note, matches the list's order).
+                    new_ids = [
+                        row[0]
+                        for row in cur.execute(
+                            "SELECT id FROM chunks WHERE note_id = ? ORDER BY chunk_index",
+                            (note_id,),
+                        ).fetchall()
+                    ]
+                    cur.executemany(
                         "INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)",
-                        (chunk_id, _serialize_float_vec(chunk.embedding)),
+                        [
+                            (cid, _serialize_float_vec(chunks[i].embedding))
+                            for i, cid in enumerate(new_ids)
+                        ],
                     )
 
                 self._conn.commit()
@@ -232,15 +238,12 @@ class Store:
 
             note_id = row[0]
 
-            # Clean up vec table (no CASCADE)
-            chunk_ids = [
-                r[0]
-                for r in cur.execute(
-                    "SELECT id FROM chunks WHERE note_id = ?", (note_id,)
-                ).fetchall()
-            ]
-            for cid in chunk_ids:
-                cur.execute("DELETE FROM chunks_vec WHERE chunk_id = ?", (cid,))
+            # Clean up vec rows (no CASCADE from chunks) in a single query.
+            cur.execute(
+                "DELETE FROM chunks_vec WHERE chunk_id IN "
+                "(SELECT id FROM chunks WHERE note_id = ?)",
+                (note_id,),
+            )
 
             cur.execute("DELETE FROM notes WHERE id = ?", (note_id,))
             self._conn.commit()
@@ -300,11 +303,17 @@ class Store:
         FTS5 treats characters like - * : as operators. Wrapping each token
         in double quotes makes them literal search terms.
         E.g. 'KI-Consulting' → '"KI" "Consulting"' (OR semantics in FTS5).
+
+        Length is capped to protect against pathological inputs that would
+        expand into a huge OR-tree and hang FTS5.
         """
         import re
+        # Cap input length before tokenization — a 100k-word query otherwise
+        # expands to a 100k-OR FTS5 match that can hang the DB.
+        capped = query[:1000]
         # Split on non-word characters, keep only non-empty tokens
-        tokens = re.split(r"[^\w]+", query)
-        tokens = [t for t in tokens if t]
+        tokens = re.split(r"[^\w]+", capped)
+        tokens = [t for t in tokens if t][:64]
         if not tokens:
             return '""'
         return " ".join(f'"{t}"' for t in tokens)

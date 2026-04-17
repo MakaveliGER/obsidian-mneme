@@ -92,42 +92,58 @@ class VaultGardener:
 
         For performance: only checks notes with <=1 link, capped at 20 candidates.
         """
-        # Get notes with <=1 total link (outgoing + incoming), ordered by fewest links
+        # Single aggregated query: count outgoing + incoming links per note via
+        # UNION ALL + GROUP BY (replaces per-row correlated subqueries that
+        # went quadratic on large graphs).
         rows = self.store._conn.execute(
             """
-            SELECT id, path, title, total_links FROM (
-                SELECT n.id, n.path, n.title,
-                       (
-                         (SELECT COUNT(*) FROM links WHERE source_id = n.id) +
-                         (SELECT COUNT(*) FROM links WHERE target_id = n.id)
-                       ) AS total_links
-                FROM notes n
-            ) sub
-            WHERE total_links <= 1
+            WITH link_counts AS (
+                SELECT note_id, COUNT(*) AS cnt
+                FROM (
+                    SELECT source_id AS note_id FROM links
+                    UNION ALL
+                    SELECT target_id AS note_id FROM links
+                )
+                GROUP BY note_id
+            )
+            SELECT n.id, n.path, n.title, COALESCE(lc.cnt, 0) AS total_links
+            FROM notes n
+            LEFT JOIN link_counts lc ON lc.note_id = n.id
+            WHERE COALESCE(lc.cnt, 0) <= 1
             ORDER BY total_links ASC
             LIMIT 20
             """
         ).fetchall()
 
-        # Build set of already-linked note paths per note
+        # Filter excluded and keep order-preserving id list
+        candidates = [(nid, path, title, cnt) for nid, path, title, cnt in rows if not self._is_excluded(path)]
+        if not candidates:
+            return []
+
+        # Bulk-load linked paths for all candidates in two queries instead of
+        # 2 × N per-candidate queries.
+        candidate_ids = [c[0] for c in candidates]
+        placeholders = ",".join("?" * len(candidate_ids))
+        linked_paths_by_note: dict[int, set[str]] = {nid: set() for nid in candidate_ids}
+
+        for row in self.store._conn.execute(
+            f"""SELECT l.source_id, n.path FROM links l
+                JOIN notes n ON n.id = l.target_id
+                WHERE l.source_id IN ({placeholders})""",
+            candidate_ids,
+        ).fetchall():
+            linked_paths_by_note[row[0]].add(row[1])
+        for row in self.store._conn.execute(
+            f"""SELECT l.target_id, n.path FROM links l
+                JOIN notes n ON n.id = l.source_id
+                WHERE l.target_id IN ({placeholders})""",
+            candidate_ids,
+        ).fetchall():
+            linked_paths_by_note[row[0]].add(row[1])
+
         results: list[dict] = []
-
-        for note_id, path, title, total_links in rows:
-            if self._is_excluded(path):
-                continue
-            # Collect paths of already-linked notes (outgoing + incoming)
-            linked_paths: set[str] = set()
-            for row in self.store._conn.execute(
-                """SELECT n.path FROM links l JOIN notes n ON n.id = l.target_id WHERE l.source_id = ?""",
-                (note_id,),
-            ).fetchall():
-                linked_paths.add(row[0])
-            for row in self.store._conn.execute(
-                """SELECT n.path FROM links l JOIN notes n ON n.id = l.source_id WHERE l.target_id = ?""",
-                (note_id,),
-            ).fetchall():
-                linked_paths.add(row[0])
-
+        for note_id, path, title, total_links in candidates:
+            linked_paths = linked_paths_by_note[note_id]
             similar = self.search.get_similar(path, top_k=3)
             suggestions = [
                 {
@@ -138,7 +154,6 @@ class VaultGardener:
                 for r in similar
                 if r.score > 0.3 and r.note_path not in linked_paths
             ]
-
             if suggestions:
                 results.append({
                     "path": path,

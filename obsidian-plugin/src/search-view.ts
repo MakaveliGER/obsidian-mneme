@@ -179,22 +179,18 @@ export class MnemeSearchView extends ItemView {
       return;
     }
 
-    const noteTitle = activeFile.basename;
     resultsEl.createDiv({ cls: "mneme-loading", text: "Suche läuft..." });
 
     try {
-      const results = await this.plugin.client.search(noteTitle, this.plugin.settings.searchTopK);
+      const results = await this.plugin.client.similar(activeFile.path, this.plugin.settings.searchTopK);
       resultsEl.empty();
 
-      // Filter out the active note itself
-      const filtered = results.filter((r) => r.path !== activeFile.path);
-
-      if (filtered.length === 0) {
+      if (results.length === 0) {
         resultsEl.createDiv({ cls: "mneme-empty", text: "Keine Ergebnisse" });
         return;
       }
 
-      this.renderResults(resultsEl, filtered);
+      this.renderResults(resultsEl, results);
     } catch (err: unknown) {
       resultsEl.empty();
       const msg = err instanceof Error ? err.message : "Unbekannter Fehler";

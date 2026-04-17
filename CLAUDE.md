@@ -2,7 +2,7 @@
 
 ## Vault
 vault: D:\Vault\second-brain\second-brain
-projekt: 02 Projekte/Eigenprojekte/Mneme.md
+projekt: 02 Projekte/Eigenprojekte/Mneme/Mneme.md
 workflow: 04 Ressourcen/Skills, Tech & Methoden/Workflows/Projekt-Workflow.md
 
 ## Kontext
@@ -52,4 +52,4 @@ Bei Session-Ende — alle 9 Punkte durchgehen:
 8. **Tasks** `01 Inbox/Tasks.md` aktualisieren falls relevant
 9. **Memory** — Cross-Project Learnings → `.claude/memory/` (Typen: user, reference, project, feedback). Projektspezifisches → nur Vault.
 
-Pfad Vault-Projekt-Datei: D:\Vault\second-brain\second-brain\02 Projekte\Eigenprojekte\Mneme.md
+Pfad Vault-Projekt-Datei: D:\Vault\second-brain\second-brain\02 Projekte\Eigenprojekte\Mneme\Mneme.md
