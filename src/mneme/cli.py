@@ -114,14 +114,18 @@ def reindex(full: bool, as_json: bool):
 
     from mneme.embeddings import get_provider
     from mneme.indexer import Indexer
-    from mneme.store import Store
+    from mneme.store import CURRENT_SCHEMA_VERSION, Store
 
     if not as_json:
         click.echo(f"Indexing vault: {config.vault.path}")
     provider = get_provider(config.embedding)
-    store = Store(config.db_path, provider.dimension())
+    # Full reindex is also the migration path: skip the version check so a
+    # legacy DB can still be opened, then bump the schema version at the end.
+    store = Store(config.db_path, provider.dimension(), skip_version_check=full)
     indexer = Indexer(store, provider, config)
     result = indexer.index_vault(full=full)
+    if full:
+        store.set_schema_version(CURRENT_SCHEMA_VERSION)
     store.close()
 
     if as_json:
@@ -351,6 +355,17 @@ def search(query: str, top_k: int, as_json: bool):
 @click.option("--json", "as_json", is_flag=True, default=True, help="Output as JSON (default).")
 def similar(path: str, top_k: int, as_json: bool):
     """Find semantically similar notes via average chunk embedding."""
+    from mneme.server import normalize_vault_path
+
+    normalized = normalize_vault_path(path)
+    if normalized is None:
+        click.echo(
+            f"Error: Invalid vault path: {path!r}. "
+            "Expected a forward-slash vault-relative path (e.g. '02 Projekte/Foo.md').",
+            err=True,
+        )
+        raise SystemExit(1)
+
     config = load_config()
     if not config.vault.path:
         click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
@@ -363,7 +378,7 @@ def similar(path: str, top_k: int, as_json: bool):
     provider = get_provider(config.embedding)
     store = Store(config.db_path, provider.dimension())
     engine = SearchEngine(store=store, embedding_provider=provider, config=config.search)
-    results = engine.get_similar(path, top_k=top_k)
+    results = engine.get_similar(normalized, top_k=top_k)
     store.close()
 
     output = {
@@ -378,14 +393,14 @@ def similar(path: str, top_k: int, as_json: bool):
             }
             for r in results
         ],
-        "source_path": path,
+        "source_path": normalized,
         "total_results": len(results),
     }
 
     if as_json:
         click.echo(json.dumps(output, ensure_ascii=False))
     else:
-        click.echo(f"Found {len(results)} similar notes for: {path}")
+        click.echo(f"Found {len(results)} similar notes for: {normalized}")
         for r in results:
             click.echo(f"  [{r.score:.4f}] {r.note_title} ({r.note_path})")
 
@@ -567,7 +582,8 @@ def install_hooks(vault_path: str | None, settings_file: str, force: bool):
 
     # Resolve configured vault (source of truth for the safety check below)
     try:
-        configured_vault = Path(load_config().vault.path).resolve() if load_config().vault.path else None
+        cfg = load_config()
+        configured_vault = Path(cfg.vault.path).resolve() if cfg.vault.path else None
     except Exception:
         configured_vault = None
 

@@ -27,8 +27,8 @@ from mneme.watcher import VaultWatcher
 logger = logging.getLogger(__name__)
 
 
-def _normalize_vault_path(path: str) -> str | None:
-    """Validate and normalize a vault-relative path from an MCP tool input.
+def normalize_vault_path(path: str) -> str | None:
+    """Validate and normalize a vault-relative path from untrusted input.
 
     Rejects absolute paths and parent-directory traversal. Normalizes
     backslashes to forward slashes so lookups match the stored form.
@@ -173,7 +173,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         err = _check_init()
         if err:
             return err
-        normalized = _normalize_vault_path(path)
+        normalized = normalize_vault_path(path)
         if normalized is None:
             return {"error": f"Invalid vault path: {path}"}
         results = state["search"].get_similar(path=normalized, top_k=top_k)
@@ -206,7 +206,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         err = _check_init()
         if err:
             return err
-        normalized = _normalize_vault_path(path)
+        normalized = normalize_vault_path(path)
         if normalized is None:
             return {"error": f"Invalid vault path: {path}"}
         store = state["store"]
@@ -304,8 +304,8 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         """
         # Security: block settings that trigger arbitrary code-loading
         # (HuggingFace model names can execute remote code via trust_remote_code).
-        # Changing these also requires a reindex, which belongs in the CLI.
-        _MCP_FORBIDDEN_SECTIONS = {"embedding"}
+        # Both `embedding.model` and `reranking.model` load models by name.
+        _MCP_FORBIDDEN_SECTIONS = {"embedding", "reranking"}
         if key.split(".", 1)[0] in _MCP_FORBIDDEN_SECTIONS:
             return {
                 "error": (

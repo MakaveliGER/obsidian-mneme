@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from mneme.store import ChunkData, Store
+from mneme.store import CURRENT_SCHEMA_VERSION, ChunkData, MnemeSchemaError, Store
 
 
 DIM = 16  # small dimension for fast tests
@@ -255,3 +255,66 @@ class TestGetEmbeddings:
         assert len(retrieved) == 1
         for orig, ret in zip(vec, retrieved[0]):
             assert abs(orig - ret) < 1e-5
+
+
+class TestSchemaVersion:
+    def test_fresh_db_sets_current_version(self, tmp_path: Path):
+        s = Store(tmp_path / "fresh.db", embedding_dim=DIM)
+        row = s._conn.execute(
+            "SELECT value FROM _meta WHERE key = 'schema_version'"
+        ).fetchone()
+        s.close()
+        assert row is not None
+        assert int(row[0]) == CURRENT_SCHEMA_VERSION
+
+    def test_matching_version_reopens_cleanly(self, tmp_path: Path):
+        db = tmp_path / "reopen.db"
+        s1 = Store(db, embedding_dim=DIM)
+        s1.close()
+        # Reopen — must not raise
+        s2 = Store(db, embedding_dim=DIM)
+        s2.close()
+
+    def test_legacy_db_raises(self, tmp_path: Path):
+        db = tmp_path / "legacy.db"
+        # Build a store, insert a note, then wipe the schema_version row to
+        # simulate a pre-v2 DB that pre-dated the `_meta` table.
+        s = Store(db, embedding_dim=DIM, skip_version_check=True)
+        s.upsert_note("a.md", "A", "h", {}, [], [])
+        s._conn.execute("DELETE FROM _meta WHERE key = 'schema_version'")
+        s._conn.commit()
+        s.close()
+
+        with pytest.raises(MnemeSchemaError, match="Legacy DB"):
+            Store(db, embedding_dim=DIM)
+
+    def test_older_version_raises_with_migration_hint(self, tmp_path: Path):
+        db = tmp_path / "old.db"
+        s = Store(db, embedding_dim=DIM)
+        s.set_schema_version(CURRENT_SCHEMA_VERSION - 1)
+        # Need at least one note so we hit the stored-version branch.
+        s.upsert_note("a.md", "A", "h", {}, [], [])
+        s.close()
+
+        with pytest.raises(MnemeSchemaError, match="reindex --full"):
+            Store(db, embedding_dim=DIM)
+
+    def test_newer_version_raises(self, tmp_path: Path):
+        db = tmp_path / "newer.db"
+        s = Store(db, embedding_dim=DIM)
+        s.set_schema_version(CURRENT_SCHEMA_VERSION + 99)
+        s.close()
+
+        with pytest.raises(MnemeSchemaError, match="newer than this Mneme"):
+            Store(db, embedding_dim=DIM)
+
+    def test_skip_version_check_bypasses(self, tmp_path: Path):
+        db = tmp_path / "bypass.db"
+        s = Store(db, embedding_dim=DIM)
+        s.set_schema_version(CURRENT_SCHEMA_VERSION - 1)
+        s.upsert_note("a.md", "A", "h", {}, [], [])
+        s.close()
+
+        # With the bypass flag, reopening the same old DB must not raise.
+        s2 = Store(db, embedding_dim=DIM, skip_version_check=True)
+        s2.close()

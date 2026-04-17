@@ -46,8 +46,20 @@ def _serialize_float_vec(vec: list[float]) -> bytes:
     return struct.pack(f"{len(vec)}f", *vec)
 
 
+CURRENT_SCHEMA_VERSION = 2
+
+
+class MnemeSchemaError(RuntimeError):
+    """Raised when the DB schema doesn't match the running Mneme version."""
+
+
 class Store:
-    def __init__(self, db_path: Path, embedding_dim: int) -> None:
+    def __init__(
+        self,
+        db_path: Path,
+        embedding_dim: int,
+        skip_version_check: bool = False,
+    ) -> None:
         self.db_path = db_path
         self.embedding_dim = embedding_dim
         self._lock = threading.Lock()
@@ -57,6 +69,8 @@ class Store:
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._load_extensions()
         self._create_schema()
+        if not skip_version_check:
+            self._verify_schema_version()
 
     def _load_extensions(self) -> None:
         try:
@@ -73,6 +87,11 @@ class Store:
     def _create_schema(self) -> None:
         cur = self._conn.cursor()
         cur.executescript("""
+            CREATE TABLE IF NOT EXISTS _meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS notes (
                 id          INTEGER PRIMARY KEY,
                 path        TEXT UNIQUE NOT NULL,
@@ -141,6 +160,50 @@ class Store:
         """)
         self._conn.commit()
 
+    def _verify_schema_version(self) -> None:
+        """Raise MnemeSchemaError if the DB schema version doesn't match.
+
+        Fresh DBs (no notes yet) are initialized to CURRENT_SCHEMA_VERSION.
+        Legacy DBs (data present but no version row) raise with a migration hint.
+        """
+        cur = self._conn.cursor()
+        row = cur.execute(
+            "SELECT value FROM _meta WHERE key = 'schema_version'"
+        ).fetchone()
+        if row is not None:
+            stored = int(row[0])
+            if stored == CURRENT_SCHEMA_VERSION:
+                return
+            if stored < CURRENT_SCHEMA_VERSION:
+                raise MnemeSchemaError(
+                    f"DB schema is v{stored}, this Mneme needs v{CURRENT_SCHEMA_VERSION}. "
+                    f"Run `mneme reindex --full` to migrate."
+                )
+            raise MnemeSchemaError(
+                f"DB schema is v{stored}, newer than this Mneme (v{CURRENT_SCHEMA_VERSION}). "
+                f"Upgrade Mneme or start with a fresh DB."
+            )
+
+        # No version row: fresh DB or legacy.
+        notes_count = cur.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
+        if notes_count == 0:
+            self.set_schema_version(CURRENT_SCHEMA_VERSION)
+        else:
+            raise MnemeSchemaError(
+                f"Legacy DB detected ({notes_count} notes, no schema version). "
+                f"Run `mneme reindex --full` to migrate to v{CURRENT_SCHEMA_VERSION}."
+            )
+
+    def set_schema_version(self, version: int) -> None:
+        """Persist the schema version into the `_meta` table."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO _meta (key, value) VALUES ('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (str(version),),
+            )
+            self._conn.commit()
+
     def upsert_note(
         self,
         path: str,
@@ -189,12 +252,17 @@ class Store:
         with self._lock:
             cur = self._conn.cursor()
             try:
-                # Delete old vec rows in one query (no CASCADE from chunks).
-                cur.execute(
-                    "DELETE FROM chunks_vec WHERE chunk_id IN "
-                    "(SELECT id FROM chunks WHERE note_id = ?)",
-                    (note_id,),
-                )
+                # chunks_vec is a sqlite-vec virtual table; IN (SELECT ...) is
+                # planned as a full scan, so we delete by chunk_id via
+                # executemany for a point-lookup per row.
+                old_ids = [
+                    (r[0],)
+                    for r in cur.execute(
+                        "SELECT id FROM chunks WHERE note_id = ?", (note_id,)
+                    ).fetchall()
+                ]
+                if old_ids:
+                    cur.executemany("DELETE FROM chunks_vec WHERE chunk_id = ?", old_ids)
 
                 # Delete old chunks (triggers handle FTS5 cleanup)
                 cur.execute("DELETE FROM chunks WHERE note_id = ?", (note_id,))
@@ -206,20 +274,18 @@ class Store:
                            VALUES (?, ?, ?, ?)""",
                         [(note_id, c.content, c.heading_path, c.chunk_index) for c in chunks],
                     )
-                    # Fetch the newly-inserted IDs in insertion order (chunk_index
-                    # is unique per note, matches the list's order).
-                    new_ids = [
-                        row[0]
-                        for row in cur.execute(
-                            "SELECT id FROM chunks WHERE note_id = ? ORDER BY chunk_index",
-                            (note_id,),
-                        ).fetchall()
-                    ]
+                    # Join the new rowids back to embeddings by chunk_index so
+                    # the order of the input `chunks` list never matters.
+                    embedding_by_index = {c.chunk_index: c.embedding for c in chunks}
+                    id_rows = cur.execute(
+                        "SELECT id, chunk_index FROM chunks WHERE note_id = ?",
+                        (note_id,),
+                    ).fetchall()
                     cur.executemany(
                         "INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)",
                         [
-                            (cid, _serialize_float_vec(chunks[i].embedding))
-                            for i, cid in enumerate(new_ids)
+                            (cid, _serialize_float_vec(embedding_by_index[ci]))
+                            for cid, ci in id_rows
                         ],
                     )
 
@@ -237,16 +303,21 @@ class Store:
                 return False
 
             note_id = row[0]
-
-            # Clean up vec rows (no CASCADE from chunks) in a single query.
-            cur.execute(
-                "DELETE FROM chunks_vec WHERE chunk_id IN "
-                "(SELECT id FROM chunks WHERE note_id = ?)",
-                (note_id,),
-            )
-
-            cur.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-            self._conn.commit()
+            try:
+                # chunks_vec virtual table: point-lookup per id (see upsert_chunks).
+                old_ids = [
+                    (r[0],)
+                    for r in cur.execute(
+                        "SELECT id FROM chunks WHERE note_id = ?", (note_id,)
+                    ).fetchall()
+                ]
+                if old_ids:
+                    cur.executemany("DELETE FROM chunks_vec WHERE chunk_id = ?", old_ids)
+                cur.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
         return True
 
     def get_note_by_path(self, path: str) -> dict | None:

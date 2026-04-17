@@ -29,12 +29,8 @@
 ## Quick Start
 
 ```bash
-# Install (CPU)
+# Install
 pip install mneme
-
-# Optional: GPU-Support
-pip install mneme[cuda]       # NVIDIA
-pip install mneme[directml]   # AMD/Intel (Windows)
 
 # Setup: fragt Vault-Pfad, lädt BGE-M3 (~2 GB) und baut den initialen Index
 mneme setup        # oder: mneme init
@@ -46,6 +42,18 @@ mneme auto-search smart
 **Erster Lauf:** ~3-5 Min (Modell-Download + Index). Nachfolgende Läufe starten in unter 10s.
 
 Fehler werden als lesbare Meldungen ausgegeben. Für vollständige Tracebacks: `MNEME_DEBUG=1 mneme <command>`.
+
+### GPU-Support (optional)
+
+Mneme nutzt PyTorch + sentence-transformers. Für GPU-Beschleunigung musst du torch mit passendem Accelerator **separat** installieren:
+
+- **NVIDIA (CUDA):** `pip install torch --index-url https://download.pytorch.org/whl/cu124`
+- **AMD (ROCm, Linux):** siehe [PyTorch ROCm](https://pytorch.org/get-started/locally/)
+- **AMD (ROCm, Windows):** HIP SDK + spezielle Wheels nötig (~87x Speedup mit RX 7900 XTX gemessen)
+
+Dann `mneme update-config embedding.device cuda` (bzw. `auto`).
+
+Die `mneme[onnx]` / `[cuda]` / `[directml]`-Extras installieren den experimentellen **ONNX-Pfad** (aktuell nicht empfohlen, siehe `docs/gpu-backend-evaluation.md`).
 
 ---
 

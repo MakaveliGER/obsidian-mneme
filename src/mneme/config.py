@@ -162,7 +162,15 @@ def apply_config_update(
     target_type = type(old_value)
     try:
         if target_type is bool:
-            parsed = value.lower() in ("true", "1", "yes")
+            lowered = value.strip().lower()
+            if lowered in ("true", "1", "yes", "on"):
+                parsed = True
+            elif lowered in ("false", "0", "no", "off"):
+                parsed = False
+            else:
+                raise ConfigUpdateError(
+                    f"Cannot parse '{value}' as bool. Use true/false, 1/0, yes/no, or on/off."
+                )
         elif target_type is int:
             parsed = int(value)
         elif target_type is float:
@@ -171,6 +179,8 @@ def apply_config_update(
             parsed = _json.loads(value)
         else:
             parsed = value
+    except ConfigUpdateError:
+        raise
     except (ValueError, TypeError) as e:
         hint = ""
         if target_type is list:
