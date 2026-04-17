@@ -380,26 +380,6 @@ export class MnemeSettingsTab extends PluginSettingTab {
         );
     }
 
-    this.addSectionTitle(advancedContainer, "Query Expansion");
-
-    new Setting(advancedContainer)
-      .setName("Query Expansion")
-      .setDesc(
-        "Passt Suchgewichte automatisch an den Query-Typ an: kurze Begriffe → mehr Keyword-Suche, lange Sätze → mehr Semantik. Bringt erst ab ~500 Notizen messbaren Vorteil."
-      )
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.queryExpansion ?? false)
-          .onChange(async (value) => {
-            this.plugin.settings.queryExpansion = value;
-            await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
-              "search.query_expansion",
-              String(value)
-            );
-          })
-      );
-
     this.addSectionTitle(advancedContainer, "Auto-Search");
 
     new Setting(advancedContainer)

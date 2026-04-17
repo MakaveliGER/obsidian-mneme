@@ -45,7 +45,6 @@ class SearchConfig(BaseModel):
     vector_weight: float = 0.6
     bm25_weight: float = 0.4
     top_k: int = 10
-    query_expansion: bool = False  # Auto-adjust weights by query type (useful from 500+ notes)
 
 
 class DatabaseConfig(BaseModel):

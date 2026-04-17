@@ -138,7 +138,6 @@ def _make_engine_with_gars(
     config.top_k = top_k
     config.vector_weight = 0.6
     config.bm25_weight = 0.4
-    config.query_expansion = False
 
     scoring_config = _make_scoring_config(gars_enabled=gars_enabled, graph_weight=graph_weight)
 

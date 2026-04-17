@@ -15,14 +15,14 @@
 
 - **Hybrid Search** — Vector (BGE-M3, 1024-dim, multilingual) + BM25 Keyword Search mit Reciprocal Rank Fusion (RRF)
 - **8 MCP Tools** — `search_notes`, `get_similar`, `get_note_context`, `vault_stats`, `vault_health`, `reindex`, `get_config`, `update_config`
-- **GraphRAG** — Wikilink-Graph mit 348+ Links, BFS-Traversal für kontextuelle Nachbarschaft
+- **GraphRAG** — Wikilink-Graph mit BFS-Traversal für kontextuelle Nachbarschaft
 - **GARS-Scoring** — Graph-Aware Retrieval Scoring: gut vernetzte Notizen ranken höher
 - **CrossEncoder Reranking** — opt-in, `BAAI/bge-reranker-v2-m3`, konfigurierbarer Score-Threshold
 - **Vault Health / Gardener** — erkennt Orphan Notes, schwache Links, Stale Notes und Duplikate
 - **Auto-Search** — Modi `off` / `smart` / `always` für automatische Context-Injection vor Tool-Calls
 - **Heading-aware Chunking** — Semantic Context Injection (Titel, Ordner, Tags pro Chunk)
 - **File Watcher** — automatische Re-Indexierung bei Vault-Änderungen via Watchdog
-- **Zero Cloud** — alles lokal auf CPU, keine API Keys, keine Abhängigkeiten von externen Services
+- **Zero Cloud** — alles lokal (CPU oder GPU), keine API-Keys, keine externen Services
 
 ---
 

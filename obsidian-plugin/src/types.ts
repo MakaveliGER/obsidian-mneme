@@ -30,9 +30,6 @@ export interface MnemeSettings {
   // Auto-Search
   hookMatchers: string[];
 
-  // Query Expansion
-  queryExpansion: boolean;
-
   // Server & Sync
   autoStartServer: boolean;
   reindexOnStart: boolean;
@@ -68,7 +65,6 @@ export const DEFAULT_SETTINGS: MnemeSettings = {
   graphWeight: 0.3,
 
   hookMatchers: ["Read"],
-  queryExpansion: false,
   autoStartServer: true,
   reindexOnStart: true,
   reindexOnClose: false,

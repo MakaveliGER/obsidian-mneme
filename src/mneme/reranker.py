@@ -32,7 +32,11 @@ class Reranker:
             if torch.cuda.is_available():
                 device = "cuda"
 
-            self._model = CrossEncoder(self.model_name, device=device)
+            # Explicit trust_remote_code=False — see the SentenceTransformer
+            # init comment for context.
+            self._model = CrossEncoder(
+                self.model_name, device=device, trust_remote_code=False
+            )
 
             # Warmup predict — first call triggers kernel init
             self._model.predict([("warmup", "warmup")], show_progress_bar=False)

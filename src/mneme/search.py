@@ -139,21 +139,9 @@ class SearchEngine:
             after=after,
         )
 
-        # --- Determine RRF weights (optionally auto-adjusted by query type) ---
+        # --- Fuse vector + BM25 ranks via RRF ---
         vector_w = float(getattr(self.config, "vector_weight", 0.6))
         bm25_w = float(getattr(self.config, "bm25_weight", 0.4))
-
-        if getattr(self.config, "query_expansion", False) is True:
-            word_count = len(query.split())
-            if word_count <= 3:
-                # Short keyword queries → boost BM25
-                bm25_w = min(bm25_w * 1.5, 1.0)
-                vector_w = max(vector_w * 0.7, 0.1)
-            elif word_count >= 10:
-                # Long semantic queries → boost vector
-                vector_w = min(vector_w * 1.3, 1.0)
-                bm25_w = max(bm25_w * 0.7, 0.1)
-
         fused = rrf_fusion([vector_results, bm25_results], weights=[vector_w, bm25_w])
 
         if self.reranker is not None:

@@ -146,10 +146,14 @@ class SentenceTransformersProvider(EmbeddingProvider):
         if hasattr(torch, "bfloat16"):
             model_kwargs["attn_implementation"] = "sdpa"
 
+        # Explicit trust_remote_code=False: never execute code from the
+        # HuggingFace repo. Backstop in case MCP update_config's allowlist
+        # is bypassed.
         self._model = SentenceTransformer(
             self.model_name,
             device=device,
             model_kwargs=model_kwargs,
+            trust_remote_code=False,
         )
         t2 = time.monotonic()
         logger.info("  model loaded on %s (%s): %.1fs", device, self._dtype_name, t2 - t1)

@@ -77,15 +77,6 @@ def main():
     print(f"  Hit@1={rc.hit_rate_at_1:.1%}  Hit@3={rc.hit_rate_at_3:.1%}  Hit@10={rc.hit_rate_at_10:.1%}  MRR={rc.mean_mrr:.4f}  ({time.monotonic()-t0:.1f}s)", flush=True)
     results.append(("C: + Rerank + GARS", rc))
 
-    # --- Run D: + Reranking + GARS + Query Expansion ---
-    print("\n=== Run D: + Reranking + GARS + Query Expansion ===", flush=True)
-    cfg_qe = SearchConfig(vector_weight=0.6, bm25_weight=0.4, top_k=10, query_expansion=True)
-    engine_d = SearchEngine(store=store, embedding_provider=provider, config=cfg_qe, reranker=reranker, scoring_config=scoring)
-    t0 = time.monotonic()
-    rd = evaluate_retrieval(engine_d, golden, top_k=10)
-    print(f"  Hit@1={rd.hit_rate_at_1:.1%}  Hit@3={rd.hit_rate_at_3:.1%}  Hit@10={rd.hit_rate_at_10:.1%}  MRR={rd.mean_mrr:.4f}  ({time.monotonic()-t0:.1f}s)", flush=True)
-    results.append(("D: + QE", rd))
-
     store.close()
 
     # --- Summary ---
