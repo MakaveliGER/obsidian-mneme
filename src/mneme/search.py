@@ -143,6 +143,13 @@ class SearchEngine:
         fused = rrf_fusion([vector_results, bm25_results], weights=[vector_w, bm25_w])
 
         if self.reranker is not None:
+            # Sync GPU before CPU reranker — prevents deadlock on ROCm
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+            except Exception:
+                pass
             results = self.reranker.rerank(query, fused, top_k)
         else:
             results = fused[:top_k]
