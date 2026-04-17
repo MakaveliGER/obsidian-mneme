@@ -1,114 +1,104 @@
 """Eval comparison — runs 4 configurations and compares Hit Rate + MRR."""
 
-import json
-import os
 import sys
-import time
+import os
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+# Patch torch.distributed BEFORE any imports
+import torch
+if not hasattr(torch, "distributed"):
+    class _D: pass
+    torch.distributed = _D()
+if not hasattr(torch.distributed, "is_initialized"):
+    torch.distributed.is_initialized = lambda: False
+if not hasattr(torch.distributed, "get_rank"):
+    torch.distributed.get_rank = lambda: 0
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mneme.config import load_config, SearchConfig, RerankingConfig, ScoringConfig
+import time
+from pathlib import Path
+from mneme.config import load_config, SearchConfig, ScoringConfig
 from mneme.embeddings import get_provider
-from mneme.eval import load_golden_dataset, evaluate_retrieval, print_report
 from mneme.reranker import Reranker
 from mneme.search import SearchEngine
 from mneme.store import Store
-
-
-def run_eval(engine, golden, label, top_k=10):
-    """Run evaluation and return report."""
-    print(f"\n{'='*60}")
-    print(f"Config: {label}")
-    print(f"{'='*60}")
-    t0 = time.monotonic()
-    report = evaluate_retrieval(engine, golden, top_k=top_k)
-    elapsed = time.monotonic() - t0
-    print_report(report)
-    print(f"  Eval time: {elapsed:.1f}s")
-    return {
-        "label": label,
-        "hit_at_1": report.hit_rate_at_1,
-        "hit_at_3": report.hit_rate_at_3,
-        "hit_at_10": report.hit_rate_at_10,
-        "mrr": report.mean_mrr,
-        "elapsed_s": round(elapsed, 1),
-    }
+from mneme.eval import load_golden_dataset, evaluate_retrieval
 
 
 def main():
     config = load_config()
-    from pathlib import Path
-    dataset_path = Path(os.path.join(os.path.dirname(__file__), "..", "tests", "golden_dataset.json"))
-    golden = load_golden_dataset(dataset_path)
-    print(f"Loaded {len(golden)} questions")
+    golden = load_golden_dataset(Path(os.path.join(os.path.dirname(__file__), "..", "tests", "golden_dataset.json")))
+    print(f"Loaded {len(golden)} questions", flush=True)
 
-    # Load model once
-    print("Loading embedding model...")
+    # Load embedding model
+    print("Loading embedding model...", flush=True)
     t0 = time.monotonic()
     provider = get_provider(config.embedding)
-    if hasattr(provider, "warmup"):
-        provider.warmup()
-    print(f"Model loaded in {time.monotonic() - t0:.1f}s")
+    provider.warmup()
+    print(f"Embedding ready ({time.monotonic() - t0:.1f}s)", flush=True)
 
     store = Store(config.db_path, provider.dimension())
     results = []
 
-    # --- Run A: Baseline (current defaults, no reranking, no GARS) ---
-    search_cfg = SearchConfig(vector_weight=0.6, bm25_weight=0.4, top_k=10)
-    engine = SearchEngine(store=store, embedding_provider=provider, config=search_cfg)
-    results.append(run_eval(engine, golden, "A: Baseline (RRF 60/40, no rerank, no GARS)"))
+    # --- Run A: Baseline ---
+    print("\n=== Run A: Baseline (RRF 60/40, no rerank, no GARS) ===", flush=True)
+    cfg = SearchConfig(vector_weight=0.6, bm25_weight=0.4, top_k=10)
+    engine = SearchEngine(store=store, embedding_provider=provider, config=cfg)
+    t0 = time.monotonic()
+    ra = evaluate_retrieval(engine, golden, top_k=10)
+    print(f"  Hit@1={ra.hit_rate_at_1:.1%}  Hit@3={ra.hit_rate_at_3:.1%}  Hit@10={ra.hit_rate_at_10:.1%}  MRR={ra.mean_mrr:.4f}  ({time.monotonic()-t0:.1f}s)", flush=True)
+    results.append(("A: Baseline", ra))
+
+    # --- Load Reranker ---
+    print("\nLoading reranker...", flush=True)
+    t0 = time.monotonic()
+    reranker = Reranker(model_name="BAAI/bge-reranker-v2-m3", threshold=0.2)
+    reranker.warmup()
+    print(f"Reranker ready ({time.monotonic() - t0:.1f}s)", flush=True)
 
     # --- Run B: + Reranking ---
-    reranker = Reranker(model_name="BAAI/bge-reranker-v2-m3", threshold=0.2)
-    print("\nLoading reranker model...")
+    print("\n=== Run B: + Reranking (threshold=0.2) ===", flush=True)
+    engine_b = SearchEngine(store=store, embedding_provider=provider, config=cfg, reranker=reranker)
     t0 = time.monotonic()
-    reranker.warmup()
-    print(f"Reranker loaded in {time.monotonic() - t0:.1f}s")
-
-    engine_rerank = SearchEngine(
-        store=store, embedding_provider=provider, config=search_cfg,
-        reranker=reranker,
-    )
-    results.append(run_eval(engine_rerank, golden, "B: + Reranking (threshold=0.2)"))
+    rb = evaluate_retrieval(engine_b, golden, top_k=10)
+    print(f"  Hit@1={rb.hit_rate_at_1:.1%}  Hit@3={rb.hit_rate_at_3:.1%}  Hit@10={rb.hit_rate_at_10:.1%}  MRR={rb.mean_mrr:.4f}  ({time.monotonic()-t0:.1f}s)", flush=True)
+    results.append(("B: + Reranking", rb))
 
     # --- Run C: + Reranking + GARS ---
-    scoring_cfg = ScoringConfig(gars_enabled=True, graph_weight=0.3)
-    engine_gars = SearchEngine(
-        store=store, embedding_provider=provider, config=search_cfg,
-        reranker=reranker, scoring_config=scoring_cfg,
-    )
-    results.append(run_eval(engine_gars, golden, "C: + Reranking + GARS (weight=0.3)"))
+    print("\n=== Run C: + Reranking + GARS (weight=0.3) ===", flush=True)
+    scoring = ScoringConfig(gars_enabled=True, graph_weight=0.3)
+    engine_c = SearchEngine(store=store, embedding_provider=provider, config=cfg, reranker=reranker, scoring_config=scoring)
+    t0 = time.monotonic()
+    rc = evaluate_retrieval(engine_c, golden, top_k=10)
+    print(f"  Hit@1={rc.hit_rate_at_1:.1%}  Hit@3={rc.hit_rate_at_3:.1%}  Hit@10={rc.hit_rate_at_10:.1%}  MRR={rc.mean_mrr:.4f}  ({time.monotonic()-t0:.1f}s)", flush=True)
+    results.append(("C: + Rerank + GARS", rc))
 
     # --- Run D: + Reranking + GARS + Query Expansion ---
-    search_cfg_qe = SearchConfig(vector_weight=0.6, bm25_weight=0.4, top_k=10, query_expansion=True)
-    engine_qe = SearchEngine(
-        store=store, embedding_provider=provider, config=search_cfg_qe,
-        reranker=reranker, scoring_config=scoring_cfg,
-    )
-    results.append(run_eval(engine_qe, golden, "D: + Reranking + GARS + Query Expansion"))
+    print("\n=== Run D: + Reranking + GARS + Query Expansion ===", flush=True)
+    cfg_qe = SearchConfig(vector_weight=0.6, bm25_weight=0.4, top_k=10, query_expansion=True)
+    engine_d = SearchEngine(store=store, embedding_provider=provider, config=cfg_qe, reranker=reranker, scoring_config=scoring)
+    t0 = time.monotonic()
+    rd = evaluate_retrieval(engine_d, golden, top_k=10)
+    print(f"  Hit@1={rd.hit_rate_at_1:.1%}  Hit@3={rd.hit_rate_at_3:.1%}  Hit@10={rd.hit_rate_at_10:.1%}  MRR={rd.mean_mrr:.4f}  ({time.monotonic()-t0:.1f}s)", flush=True)
+    results.append(("D: + QE", rd))
 
     store.close()
 
     # --- Summary ---
-    print(f"\n{'='*70}")
-    print("COMPARISON SUMMARY")
-    print(f"{'='*70}")
-    print(f"{'Config':<50} {'Hit@1':<8} {'Hit@3':<8} {'Hit@10':<8} {'MRR':<8}")
-    print("-" * 70)
-    for r in results:
-        h1 = f"{r['hit_at_1']:.0%}"
-        h3 = f"{r['hit_at_3']:.0%}"
-        h10 = f"{r['hit_at_10']:.0%}"
-        mrr = f"{r['mrr']:.3f}"
-        print(f"{r['label']:<50} {h1:<8} {h3:<8} {h10:<8} {mrr:<8}")
+    print(f"\n{'='*70}", flush=True)
+    print("COMPARISON SUMMARY", flush=True)
+    print(f"{'='*70}", flush=True)
+    print(f"{'Config':<30} {'Hit@1':<8} {'Hit@3':<8} {'Hit@10':<8} {'MRR':<8}", flush=True)
+    print("-" * 70, flush=True)
+    for label, r in results:
+        print(f"{label:<30} {r.hit_rate_at_1:<8.1%} {r.hit_rate_at_3:<8.1%} {r.hit_rate_at_10:<8.1%} {r.mean_mrr:<8.4f}", flush=True)
 
-    # Best config
-    best = max(results, key=lambda r: r["mrr"])
-    print(f"\nBest config: {best['label']} (MRR={best['mrr']:.3f})")
+    best = max(results, key=lambda x: x[1].mean_mrr)
+    print(f"\nBest config: {best[0]} (MRR={best[1].mean_mrr:.4f})", flush=True)
 
 
 if __name__ == "__main__":
