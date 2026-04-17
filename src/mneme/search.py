@@ -176,6 +176,10 @@ class SearchEngine:
 
         return results
 
+    def invalidate_centrality_cache(self) -> None:
+        """Clear the cached centrality map. Call after index changes."""
+        self._centrality_map = None
+
     def get_similar(self, path: str, top_k: int = 5) -> list[SearchResult]:
         """Find notes similar to the note at *path* using average chunk embedding.
 

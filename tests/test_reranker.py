@@ -26,10 +26,14 @@ def make_result(chunk_id: int, content: str = "content", score: float = 1.0) -> 
 
 
 def _make_reranker_with_mock(scores: list[float], threshold: float = 0.3) -> tuple[Reranker, MagicMock]:
-    """Return a Reranker whose CrossEncoder.predict is mocked to return *scores*."""
+    """Return a Reranker whose CrossEncoder.predict is mocked to return *scores*.
+
+    Since rerank() calls predict() once per pair (single-predict for ROCm
+    compatibility), we use side_effect to return one score at a time.
+    """
     reranker = Reranker(model_name="mock-model", threshold=threshold)
     mock_model = MagicMock()
-    mock_model.predict.return_value = scores
+    mock_model.predict.side_effect = [[s] for s in scores]
     reranker._model = mock_model
     return reranker, mock_model
 

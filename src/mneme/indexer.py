@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import fnmatch
-import json
 import logging
 import time
 from dataclasses import dataclass
@@ -83,11 +82,7 @@ class Indexer:
         # Batch-load all hashes for incremental mode (avoids N separate SELECTs)
         hash_cache: dict[str, tuple[int, str, list[str]]] = {}
         if not full:
-            for row in self._store._conn.execute(
-                "SELECT id, path, content_hash, wikilinks FROM notes"
-            ).fetchall():
-                wl = json.loads(row[3]) if row[3] else []
-                hash_cache[row[1]] = (row[0], row[2], wl)
+            hash_cache = self._store.get_hash_cache()
 
         for file_path in unique_files:
             try:

@@ -1,4 +1,4 @@
-import { exec, spawn, ChildProcess } from "child_process";
+import { execFile, spawn, ChildProcess } from "child_process";
 import { promisify } from "util";
 import type {
   SearchResult,
@@ -8,7 +8,7 @@ import type {
   MnemeConfig,
 } from "./types";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Client for communicating with the Mneme Python backend via CLI.
@@ -64,14 +64,13 @@ export class MnemeClient {
     return this.serverProcess !== null && !this.serverProcess.killed;
   }
 
-  /** Run a mneme CLI command and return parsed JSON output */
-  private async run(
-    args: string,
+  /** Run a mneme CLI command with argument array and return parsed JSON output */
+  private async runArgs(
+    args: string[],
     timeoutMs: number = 30000
   ): Promise<unknown> {
-    const cmd = `${this.mnemePath} ${args}`;
     try {
-      const { stdout } = await execAsync(cmd, {
+      const { stdout } = await execFileAsync(this.mnemePath, args, {
         timeout: timeoutMs,
         env: { ...process.env, PYTHONIOENCODING: "utf-8" },
       });
@@ -92,14 +91,13 @@ export class MnemeClient {
     }
   }
 
-  /** Run a command that returns plain text (not JSON) */
-  private async runText(
-    args: string,
+  /** Run a command with argument array that returns plain text (not JSON) */
+  private async runArgsText(
+    args: string[],
     timeoutMs: number = 30000
   ): Promise<string> {
-    const cmd = `${this.mnemePath} ${args}`;
     try {
-      const { stdout } = await execAsync(cmd, {
+      const { stdout } = await execFileAsync(this.mnemePath, args, {
         timeout: timeoutMs,
         env: { ...process.env, PYTHONIOENCODING: "utf-8" },
       });
@@ -121,46 +119,42 @@ export class MnemeClient {
 
   /** Search the vault */
   async search(query: string, topK?: number): Promise<SearchResult[]> {
-    const tkArg = topK ? ` --top-k ${topK}` : "";
-    const escaped = query.replace(/"/g, '\\"');
-    const result = (await this.run(
-      `search "${escaped}"${tkArg} --json`
-    )) as { results?: SearchResult[] };
+    const args = ["search", query, "--json"];
+    if (topK) args.push("--top-k", String(topK));
+    const result = (await this.runArgs(args)) as { results?: SearchResult[] };
     return result.results || [];
   }
 
   /** Get vault statistics */
   async getStatus(): Promise<VaultStats> {
-    return (await this.run("status --json")) as VaultStats;
+    return (await this.runArgs(["status", "--json"])) as VaultStats;
   }
 
   /** Reindex the vault */
   async reindex(full: boolean = false): Promise<ReindexResult> {
-    const fullArg = full ? " --full" : "";
-    return (await this.run(
-      `reindex${fullArg} --json`,
-      300000
-    )) as ReindexResult;
+    const args = ["reindex", "--json"];
+    if (full) args.push("--full");
+    return (await this.runArgs(args, 300000)) as ReindexResult;
   }
 
   /** Run vault health check */
   async healthCheck(): Promise<HealthReport> {
-    return (await this.run("health --json", 120000)) as HealthReport;
+    return (await this.runArgs(["health", "--json"], 120000)) as HealthReport;
   }
 
   /** Get current config */
   async getConfig(): Promise<MnemeConfig> {
-    return (await this.run("get-config --json")) as MnemeConfig;
+    return (await this.runArgs(["get-config", "--json"])) as MnemeConfig;
   }
 
   /** Update a config value */
   async updateConfig(key: string, value: string): Promise<void> {
-    await this.runText(`update-config "${key}" "${value}"`);
+    await this.runArgsText(["update-config", key, value]);
   }
 
   /** Set auto-search mode */
   async setAutoSearchMode(mode: "off" | "smart" | "always"): Promise<string> {
-    return await this.runText(`auto-search ${mode}`);
+    return await this.runArgsText(["auto-search", mode]);
   }
 
   /** Check if mneme is reachable */

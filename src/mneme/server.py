@@ -146,6 +146,9 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Similar notes with path, title, and similarity score.
         """
+        err = _check_init()
+        if err:
+            return err
         results = state["search"].get_similar(path=path, top_k=top_k)
 
         return {
@@ -173,6 +176,9 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Context bundle with the note, its graph neighbors, and similar notes.
         """
+        err = _check_init()
+        if err:
+            return err
         store = state["store"]
         note = store.get_note_by_path(path)
         if not note:
@@ -212,6 +218,9 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Index statistics including note count, chunk count, and database size.
         """
+        err = _check_init()
+        if err:
+            return err
         stats = state["store"].get_stats(
             embedding_model=state["config"].embedding.model
         )
@@ -327,6 +336,9 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         Returns:
             Health report with results for each requested check.
         """
+        err = _check_init()
+        if err:
+            return err
         gardener: VaultGardener = state["gardener"]
         all_checks = checks is None
 

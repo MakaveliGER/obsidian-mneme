@@ -306,7 +306,7 @@ class Store:
         tokens = re.split(r"[^\w]+", query)
         tokens = [t for t in tokens if t]
         if not tokens:
-            return query
+            return '""'
         return " ".join(f'"{t}"' for t in tokens)
 
     def bm25_search(
@@ -538,6 +538,19 @@ class Store:
             frontier = next_frontier
 
         return list(visited.values())
+
+    def get_hash_cache(self) -> dict[str, tuple[int, str, list[str]]]:
+        """Return {path: (id, content_hash, wikilinks)} for all notes."""
+        import json
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, path, content_hash, wikilinks FROM notes"
+            ).fetchall()
+        result = {}
+        for row in rows:
+            wl = json.loads(row[3]) if row[3] else []
+            result[row[1]] = (row[0], row[2], wl)
+        return result
 
     def close(self) -> None:
         self._conn.close()

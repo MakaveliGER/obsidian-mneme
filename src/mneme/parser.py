@@ -307,6 +307,10 @@ def chunk_note(parsed: ParsedNote, max_tokens: int = 1000, overlap_tokens: int =
         else:
             sub_texts = [text]
 
+        # Only apply outer overlap for non-split sections.
+        # _split_section handles overlap internally via prev_tail.
+        apply_outer_overlap = len(sub_texts) == 1
+
         for sub_text in sub_texts:
             sub_text = sub_text.strip()
             if not sub_text:
@@ -314,7 +318,7 @@ def chunk_note(parsed: ParsedNote, max_tokens: int = 1000, overlap_tokens: int =
 
             # Prepend overlap from previous chunk
             overlap_prefix = ""
-            if prev_chunk_tail:
+            if apply_outer_overlap and prev_chunk_tail:
                 tail_words = prev_chunk_tail.split()
                 if len(tail_words) > overlap_tokens:
                     tail_words = tail_words[-overlap_tokens:]

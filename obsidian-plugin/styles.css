@@ -110,6 +110,9 @@
   font-weight: 600;
   font-size: 14px;
   color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mneme-result-score {
