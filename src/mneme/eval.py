@@ -129,10 +129,11 @@ def evaluate_retrieval(
     """
     results: list[EvalResult] = []
 
-    for entry in dataset:
+    for i, entry in enumerate(dataset):
         question: str = entry["question"]
         expected: list[str] = entry["expected_contexts"]
 
+        print(f"  [{i+1}/{len(dataset)}] {question[:50]}...", end="", flush=True)
         search_results = search_engine.search(question, top_k=top_k)
         retrieved_paths = [r.note_path for r in search_results]
 
@@ -140,6 +141,9 @@ def evaluate_retrieval(
         hit3 = _has_hit(expected, retrieved_paths, top_k=3)
         hit10 = _has_hit(expected, retrieved_paths, top_k=10)
         mrr = _compute_mrr(expected, retrieved_paths)
+
+        hit_symbol = "@1" if hit1 else "@3" if hit3 else "@10" if hit10 else "MISS"
+        print(f" {hit_symbol}", flush=True)
 
         results.append(EvalResult(
             question=question,
