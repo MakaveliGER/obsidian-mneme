@@ -68,6 +68,10 @@ class Store:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        # busy_timeout lets a second writer (e.g. CLI `reindex --full` while
+        # the server's watcher is active) wait for the lock instead of
+        # failing immediately with "database is locked".
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._load_extensions()
         self._create_schema()
         if not skip_version_check:
@@ -554,34 +558,52 @@ class Store:
 
         Result is cached; invalidated when notes are added or deleted. Content
         updates to an existing note leave the cache valid.
-        """
-        if self._alias_map_cache is not None:
-            return self._alias_map_cache
-        rows = self._conn.execute("SELECT id, path FROM notes").fetchall()
 
+        Locked end-to-end so a concurrent ``upsert_note`` cannot invalidate
+        the cache between our scan and our write-back (which would leave the
+        cache holding a stale map).
+        """
         from collections import defaultdict
         from pathlib import PurePosixPath
 
-        basename_to_ids: dict[str, list[int]] = defaultdict(list)
-        full_path_map: dict[str, int] = {}
+        with self._lock:
+            if self._alias_map_cache is not None:
+                return self._alias_map_cache
+            rows = self._conn.execute("SELECT id, path FROM notes").fetchall()
 
-        for note_id, path in rows:
-            # Normalize to forward slashes (wikilinks always use /)
-            normalized = path.replace("\\", "/")
-            full_key = normalized[:-3] if normalized.endswith(".md") else normalized
-            full_path_map[full_key] = note_id
-            base = PurePosixPath(normalized).stem
-            basename_to_ids[base].append(note_id)
+            basename_to_ids: dict[str, list[int]] = defaultdict(list)
+            full_path_map: dict[str, int] = {}
 
-        alias_map: dict[str, int] = {}
-        alias_map.update(full_path_map)
+            for note_id, path in rows:
+                # Normalize to forward slashes (wikilinks always use /)
+                normalized = path.replace("\\", "/")
+                full_key = normalized[:-3] if normalized.endswith(".md") else normalized
+                full_path_map[full_key] = note_id
+                base = PurePosixPath(normalized).stem
+                basename_to_ids[base].append(note_id)
 
-        for base, ids in basename_to_ids.items():
-            if len(ids) == 1:
-                alias_map[base] = ids[0]
+            alias_map: dict[str, int] = {}
+            alias_map.update(full_path_map)
 
-        self._alias_map_cache = alias_map
-        return alias_map
+            collisions: list[str] = []
+            for base, ids in basename_to_ids.items():
+                if len(ids) == 1:
+                    alias_map[base] = ids[0]
+                else:
+                    collisions.append(base)
+
+            if collisions:
+                # B2: surface basename collisions in the log so users notice
+                # that `[[foo]]` lost its short alias to a full-path lookup.
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Wikilink basename collisions (%d): %s — use full vault path",
+                    len(collisions),
+                    ", ".join(sorted(collisions)[:5]) + (" ..." if len(collisions) > 5 else ""),
+                )
+
+            self._alias_map_cache = alias_map
+            return alias_map
 
     def resolve_and_store_links(
         self, note_id: int, wikilinks: list[str], alias_map: dict[str, int]

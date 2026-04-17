@@ -213,7 +213,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         if normalized is None:
             return {"error": f"Invalid vault path: {path}"}
         depth = max(1, min(depth, 3))
-        similar_k = max(0, min(similar_k, 20))
+        similar_k = max(1, min(similar_k, 20))
         store = state["store"]
         note = store.get_note_by_path(normalized)
         if not note:
@@ -225,7 +225,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
         neighbors = store.get_graph_neighbors(note_id, depth=depth)
 
         # Semantically similar notes
-        similar = state["search"].get_similar(path=normalized, top_k=similar_k) if similar_k else []
+        similar = state["search"].get_similar(path=normalized, top_k=similar_k)
 
         return {
             "note": {
@@ -294,13 +294,23 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
     def get_config() -> dict:
         """Get the current Mneme configuration.
 
+        Paths (vault, database) are redacted to booleans so this tool can't
+        be used for prompt-injection-driven PII exfiltration. Use the CLI
+        (`mneme get-config`) if you need the real paths.
+
         Returns:
             Current configuration as a dictionary.
         """
         err = _check_init()
         if err:
             return err
-        return state["config"].model_dump()
+        data = state["config"].model_dump()
+        # Redact anything path-like that would leak local filesystem layout.
+        if "vault" in data and isinstance(data["vault"], dict):
+            data["vault"]["path"] = "<set>" if data["vault"].get("path") else "<unset>"
+        if "database" in data and isinstance(data["database"], dict):
+            data["database"]["path"] = "<set>" if data["database"].get("path") else "<unset>"
+        return data
 
     @mcp.tool()
     def update_config(key: str, value: str) -> dict:

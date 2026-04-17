@@ -107,6 +107,18 @@ class SearchEngine:
         if top_k is None:
             top_k = self.config.top_k
 
+        # Validate the `after` cutoff — SQL string-compares it against the
+        # ISO-8601 `updated_at` column. Non-ISO input silently matches the
+        # wrong subset, so reject early.
+        if after is not None:
+            from datetime import datetime
+            try:
+                datetime.fromisoformat(after.replace("Z", "+00:00"))
+            except (ValueError, TypeError) as e:
+                raise ValueError(
+                    f"`after` must be an ISO-8601 date/datetime string, got {after!r}: {e}"
+                ) from e
+
         # --- Vector search (over-retrieve, then post-filter) ---
         embedding = self.embedding_provider.embed([query])[0]
         vector_results_raw = self.store.vector_search(embedding, top_k=top_k * 3)

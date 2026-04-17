@@ -126,13 +126,31 @@ class ParsedNote:
     body: str           # content without frontmatter
 
 
+#: Upper bound on a single note's size. Notes above this are skipped to
+#: protect the indexer from OOM on pathological (or malicious) inputs.
+MAX_NOTE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+class NoteTooLargeError(ValueError):
+    """Raised when a note exceeds ``MAX_NOTE_SIZE_BYTES``."""
+
+
 def parse_note(file_path: Path, vault_root: Path) -> ParsedNote:
     """Read and parse a single Obsidian note.
 
     Args:
         file_path:  Absolute path to the .md file.
         vault_root: Absolute path to the vault root (for relative path calc).
+
+    Raises:
+        NoteTooLargeError: if the file exceeds ``MAX_NOTE_SIZE_BYTES``.
     """
+    size = file_path.stat().st_size
+    if size > MAX_NOTE_SIZE_BYTES:
+        raise NoteTooLargeError(
+            f"{file_path.name} is {size / 1_048_576:.1f} MB, "
+            f"exceeds {MAX_NOTE_SIZE_BYTES // 1_048_576} MB limit"
+        )
     raw = file_path.read_text(encoding="utf-8-sig")  # handles BOM on Windows
 
     content_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()

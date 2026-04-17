@@ -29,7 +29,7 @@
 ## Quick Start
 
 ```bash
-# Install
+# Install (zieht torch + sentence-transformers — insgesamt ~1.5 GB)
 pip install mneme
 
 # Setup: fragt Vault-Pfad, lädt BGE-M3 (~2 GB) und baut den initialen Index
@@ -39,7 +39,9 @@ mneme setup        # oder: mneme init
 mneme auto-search smart
 ```
 
-**Erster Lauf:** ~3-5 Min (Modell-Download + Index). Nachfolgende Läufe starten in unter 10s.
+> **Hinweis zu torch:** `pip install mneme` installiert das CPU-torch-Wheel. Wenn du bereits eine CUDA-/ROCm-Variante von torch in der venv hast, überschreibt das deinen Install. Lösung: Nutze ein dediziertes venv (`uv venv` oder `python -m venv`).
+
+**Erster Lauf (CPU):** ~5-15 Min — Modell-Download hängt an der Bandbreite, Index skaliert mit Vault-Größe (~3-8 Chunks/s auf CPU). Nachfolgende Starts in unter 10s.
 
 Fehler werden als lesbare Meldungen ausgegeben. Für vollständige Tracebacks: `MNEME_DEBUG=1 mneme <command>`.
 
@@ -57,20 +59,33 @@ Die `mneme[onnx]` / `[cuda]` / `[directml]`-Extras installieren den experimentel
 
 ---
 
-## Usage with Claudian
+## Usage mit Claude Code / Claudian
 
-Füge das zur `.claude/mcp.json` deines Projekts oder Vaults hinzu:
+Mneme spricht [MCP](https://modelcontextprotocol.io/) über stdio. Das heißt: jeder MCP-fähige Client kann die 8 Tools nutzen. Getestet mit:
+
+- **[Claude Code](https://claude.ai/code)** (CLI) — Konfig in `.claude/mcp.json` im Projekt- oder Vault-Ordner.
+- **[Claudian](https://github.com/YishenTu/claudian)** — Obsidian-Plugin, das Claude Code im Vault verfügbar macht. Setzt dieselbe `.claude/mcp.json` voraus.
+
+Konfig nach `pip install mneme`:
 
 ```json
 {
   "mcpServers": {
     "mneme": {
-      "command": "uvx",
-      "args": ["mneme", "serve"]
+      "command": "mneme",
+      "args": ["serve"]
     }
   }
 }
 ```
+
+Falls du stattdessen [uvx](https://docs.astral.sh/uv/) nutzt und Mneme isoliert starten willst:
+
+```json
+{ "mcpServers": { "mneme": { "command": "uvx", "args": ["mneme", "serve"] } } }
+```
+
+`uvx` installiert Mneme (und transitiv torch) in ein separates Cache-venv — größer, aber keine Kollision mit deiner Projekt-venv.
 
 **Beispiel-Queries:**
 

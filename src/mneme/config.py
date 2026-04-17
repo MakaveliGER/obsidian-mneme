@@ -74,11 +74,8 @@ class AutoSearchConfig(BaseModel):
 
 
 class HealthConfig(BaseModel):
-    # TODO(release): Before PyPI publish, change defaults to [] — every vault has different structures
-    exclude_patterns: list[str] = Field(default_factory=lambda: [
-        "04 Ressourcen/**/Newsletter/**",
-        "05 Daily Notes/**",
-    ])
+    # Users set this per-vault via `mneme update-config health.exclude_patterns`.
+    exclude_patterns: list[str] = Field(default_factory=list)
 
 
 class MnemeConfig(BaseSettings):
@@ -182,6 +179,11 @@ def apply_config_update(
             parsed = float(value)
         elif target_type is list:
             parsed = _json.loads(value)
+            if not isinstance(parsed, list):
+                raise ConfigUpdateError(
+                    f"Expected a JSON array for '{key}', got {type(parsed).__name__}. "
+                    f"Example: '[\"a\",\"b\"]'"
+                )
         else:
             parsed = value
     except ConfigUpdateError:
