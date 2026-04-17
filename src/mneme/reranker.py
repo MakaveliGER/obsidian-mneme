@@ -55,8 +55,12 @@ class Reranker:
 
         model = self._load_model()
 
-        # Prepare pairs for CrossEncoder
-        pairs = [(query, r.content) for r in results]
+        # Limit candidates and truncate content for performance.
+        # CrossEncoder max seq length is 512 tokens (~2000 chars).
+        # Scoring 50+ full chunks on CPU would take minutes.
+        max_candidates = min(len(results), top_k * 3)
+        candidates = results[:max_candidates]
+        pairs = [(query, r.content[:2000]) for r in candidates]
 
         # Score all pairs
         raw_scores = model.predict(pairs, show_progress_bar=False)
@@ -67,7 +71,7 @@ class Reranker:
 
         # Attach scores and filter
         scored = []
-        for result, score in zip(results, scores):
+        for result, score in zip(candidates, scores):
             if score >= self.threshold:
                 scored.append(SearchResult(
                     chunk_id=result.chunk_id,
