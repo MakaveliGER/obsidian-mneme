@@ -1,22 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-  <!-- Muse profile silhouette - simplified for Obsidian ribbon -->
-  <!-- Head outline -->
-  <path d="M12 3c-1.5 0-2.8.6-3.6 1.5C7.5 5.5 7 7 7 8.5c0 1 .2 1.8.5 2.5l-.5 2c-.2.8-.5 1.5-.5 2 0 1.5 1 2.5 2 3l.5.5v2.5h6v-2.5l.5-.5c1-.5 2-1.5 2-3 0-.5-.3-1.2-.5-2l-.5-2c.3-.7.5-1.5.5-2.5 0-1.5-.5-3-1.4-4C14.8 3.6 13.5 3 12 3z"/>
-  <!-- Laurel wreath left -->
-  <path d="M7.5 6c-.8.3-1.5 1-1.8 1.8"/>
-  <path d="M6.5 8.5c-.5.5-.8 1.2-.8 1.8"/>
-  <path d="M6.2 11c-.2.5-.2 1 0 1.5"/>
-  <!-- Laurel wreath right -->
-  <path d="M14 4.5c.8-.2 1.5 0 2 .5"/>
-  <path d="M16.5 6c.5.5.8 1 .8 1.5"/>
-  <!-- Neural network nodes -->
-  <circle cx="9" cy="7" r=".7" fill="currentColor" stroke="none"/>
-  <circle cx="11" cy="5.5" r=".7" fill="currentColor" stroke="none"/>
-  <circle cx="8" cy="9.5" r=".7" fill="currentColor" stroke="none"/>
-  <circle cx="10.5" cy="8" r=".7" fill="currentColor" stroke="none"/>
-  <!-- Neural connections -->
-  <line x1="9" y1="7" x2="11" y2="5.5" stroke-width=".7"/>
-  <line x1="9" y1="7" x2="8" y2="9.5" stroke-width=".7"/>
-  <line x1="9" y1="7" x2="10.5" y2="8" stroke-width=".7"/>
-  <line x1="11" y1="5.5" x2="10.5" y2="8" stroke-width=".7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor" stroke="none">
+  <!-- Mneme Muse profile silhouette - for Obsidian ribbon icon -->
+  <g transform="translate(0,256) scale(0.1,-0.1)">
+    <path d="M1709 2137 c-24 -13 -54 -38 -66 -56 l-22 -33 6 51 c7 60 -4 65 -60
+27 -34 -24 -36 -24 -79 -8 -65 24 -258 28 -338 8 -164 -42 -314 -184 -345
+-323 -5 -24 -12 -33 -26 -33 -26 0 -89 -33 -111 -57 -65 -71 -84 -239 -40
+-338 41 -89 101 -136 176 -137 36 -1 44 -6 69 -40 30 -42 78 -68 125 -68 l29
+0 -12 -54 c-21 -92 -37 -129 -76 -188 -22 -31 -39 -61 -39 -67 0 -6 -19 -15
+-42 -21 -32 -9 -58 -28 -101 -72 -112 -117 -131 -157 -64 -137 17 5 69 10 113
+10 92 0 152 -17 292 -82 232 -109 398 -138 560 -97 27 7 42 16 42 26 0 46
+-184 263 -210 247 -5 -3 -10 -2 -10 2 0 23 71 218 82 225 7 5 50 6 95 2 52 -4
+94 -2 117 6 46 15 70 58 62 110 -4 27 -2 41 9 50 8 7 15 25 15 41 0 15 5 31
+11 35 7 4 9 20 6 40 -5 32 -4 34 33 44 23 6 41 18 45 29 3 11 -11 61 -35 119
+-26 64 -40 116 -40 144 0 24 -5 70 -10 101 -10 52 -9 59 12 87 48 66 16 190
+-61 236 -16 10 -32 26 -34 36 -4 14 -15 18 -47 18 l-42 0 29 28 c35 32 66 88
+58 102 -9 15 -28 12 -76 -13z"/>
+  </g>
 </svg>

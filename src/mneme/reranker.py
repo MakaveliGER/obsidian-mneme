@@ -62,8 +62,11 @@ class Reranker:
         candidates = results[:max_candidates]
         pairs = [(query, r.content[:2000]) for r in candidates]
 
-        # Score all pairs
-        raw_scores = model.predict(pairs, show_progress_bar=False)
+        # Score pairs one by one — batch predict hangs on ROCm Windows
+        raw_scores = [
+            float(model.predict([pair], show_progress_bar=False)[0])
+            for pair in pairs
+        ]
 
         # Normalize scores to [0, 1] via sigmoid (CrossEncoder returns logits)
         import math
