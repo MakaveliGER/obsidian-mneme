@@ -35,6 +35,30 @@ export class MnemeClient {
     this.httpPort = port;
   }
 
+  /** Lazy discovery: if httpPort isn't set yet (onStartup didn't complete
+   * or hasn't run), probe the default server port and latch it. Called
+   * before every HTTP-capable method so the plugin self-heals even when
+   * the startup sequence missed its window.
+   *
+   * This eliminates the class of bug where the initial setHttpPort() in
+   * onStartup failed silently (waitUntilWarm timeout, race with Obsidian
+   * layout-ready, etc.) and every subsequent search/similar call fell
+   * through to the slow CLI subprocess — a subprocess that also deadlocks
+   * on the SQLite write-lock when the server is already running.
+   *
+   * The default port matches DEFAULT_SETTINGS.serverPort (8765). Users who
+   * changed it either went through onStartup successfully (then httpPort
+   * is already set) or manually set up the server at 8765 anyway. */
+  private async ensureHttpPort(): Promise<void> {
+    if (this.httpPort !== null) return;
+    const state = await this.probeHealth(8765);
+    if (state === "mneme-warm" || state === "mneme") {
+      this.httpPort = 8765;
+      // eslint-disable-next-line no-console
+      console.info("[Mneme] HTTP server discovered on port 8765 via lazy probe");
+    }
+  }
+
   /** Internal: fetch a REST endpoint on the warm HTTP server. Returns
    * parsed JSON on success, or throws with `http-down` / `http-error`
    * so callers can cleanly fall back to CLI. */
@@ -394,6 +418,7 @@ export class MnemeClient {
    * cold-load + search can easily exceed 30s on first invocation.
    */
   async search(query: string, topK?: number): Promise<SearchResult[]> {
+    await this.ensureHttpPort();
     if (this.httpPort !== null) {
       try {
         const r = (await this.restCall("/api/v1/search", "POST", {
@@ -406,7 +431,7 @@ export class MnemeClient {
       }
     } else {
       // eslint-disable-next-line no-console
-      console.warn("[Mneme] httpPort not set — search will use CLI fallback. Check autoStartServer + waitUntilWarm.");
+      console.warn("[Mneme] No HTTP server reachable on port 8765 — using CLI fallback. Start `mneme serve --transport streamable-http` or enable Auto-Start in plugin settings.");
     }
     const args = ["search", query, "--json"];
     if (topK) args.push("--top-k", String(topK));
@@ -416,6 +441,7 @@ export class MnemeClient {
 
   /** Find semantically similar notes via average chunk embedding */
   async similar(path: string, topK?: number): Promise<SearchResult[]> {
+    await this.ensureHttpPort();
     if (this.httpPort !== null) {
       try {
         const r = (await this.restCall("/api/v1/similar", "POST", {
@@ -426,9 +452,6 @@ export class MnemeClient {
         // eslint-disable-next-line no-console
         console.warn("[Mneme] HTTP similar failed, falling back to CLI:", err);
       }
-    } else {
-      // eslint-disable-next-line no-console
-      console.warn("[Mneme] httpPort not set — similar will use CLI fallback.");
     }
     const args = ["similar", path, "--json"];
     if (topK) args.push("--top-k", String(topK));
@@ -438,6 +461,7 @@ export class MnemeClient {
 
   /** Get vault statistics */
   async getStatus(): Promise<VaultStats> {
+    await this.ensureHttpPort();
     if (this.httpPort !== null) {
       try {
         return (await this.restCall("/api/v1/stats", "GET")) as VaultStats;
@@ -450,6 +474,7 @@ export class MnemeClient {
 
   /** Reindex the vault */
   async reindex(full: boolean = false): Promise<ReindexResult> {
+    await this.ensureHttpPort();
     if (this.httpPort !== null) {
       try {
         return (await this.restCall(
@@ -469,6 +494,7 @@ export class MnemeClient {
 
   /** Run vault health check */
   async healthCheck(): Promise<HealthReport> {
+    await this.ensureHttpPort();
     if (this.httpPort !== null) {
       try {
         return (await this.restCall(

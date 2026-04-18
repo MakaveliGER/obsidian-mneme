@@ -180,6 +180,19 @@ tests, sdist/wheel build).
   too aggressive for BGE-M3 cold-load + search on some setups, causing
   the fallback path to report "Command failed" before the model even
   finished loading.
+- **Plugin lazy HTTP discovery** — the root cause of reported "Command
+  failed" errors. The previous design relied on `onStartup` successfully
+  calling `setHttpPort()` exactly once at layout-ready; if that single
+  window was missed (server not yet responsive, race with Obsidian's
+  ribbon registration, etc.), every subsequent search silently fell
+  through to the CLI subprocess — which *also* hangs on the SQLite
+  write-lock when the server is already running, producing a generic
+  "Command failed" with no stderr content. Now every HTTP-capable
+  method calls `ensureHttpPort()` first, which probes `/health` on port
+  8765 and latches if a Mneme server is answering. Plugin self-heals:
+  user can start the server at any time (via Claudian autostart,
+  external `mneme serve`, or the plugin's own autostart) and the
+  next search picks up HTTP without an Obsidian restart.
 
 ## [0.3.0] - 2026-04-17
 
