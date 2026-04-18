@@ -123,6 +123,11 @@ export default class MnemePlugin extends Plugin {
         );
         return;
       }
+
+      // Enable the HTTP fast-path for search/similar/stats/etc. Plugin
+      // UI queries now go via fetch() → ~10ms round-trip instead of
+      // spawning a fresh Python process per call (2-3s cold).
+      this.client.setHttpPort(this.settings.serverPort);
     }
 
     // Reindex on start (catches offline changes + sync) — only after warmup.
@@ -152,6 +157,10 @@ export default class MnemePlugin extends Plugin {
         // Silent — we're shutting down
       }
     }
+
+    // Disable the HTTP fast-path so any late calls that slip past unload
+    // don't keep firing requests at a server that may be gone.
+    this.client.setHttpPort(null);
 
     // Only stop the server if the user opted into the non-persistent mode.
     // The default is to keep it running so Claudian (and the next Obsidian

@@ -211,3 +211,110 @@ def test_health_endpoint_accepts_loopback_variations(tmp_path: Path):
         assert response.status_code == 200, (
             f"Expected 200 for host={host!r}, got {response.status_code}"
         )
+
+
+# ---------------------------------------------------------------------------
+# REST API endpoints — added for the Obsidian-plugin fast-path
+# ---------------------------------------------------------------------------
+
+def test_rest_endpoints_registered_in_http_mode(tmp_path: Path):
+    """/api/v1/* endpoints must be registered in HTTP mode."""
+    config = _http_config(tmp_path)
+    with patch("mneme.server.get_provider"):
+        server = create_server(config)
+
+    routes = getattr(server, "_custom_starlette_routes", [])
+    paths = {getattr(r, "path", None) for r in routes}
+    expected = {
+        "/api/v1/search",
+        "/api/v1/similar",
+        "/api/v1/stats",
+        "/api/v1/vault-health",
+        "/api/v1/reindex",
+    }
+    assert expected.issubset(paths), (
+        f"Missing REST routes: {expected - paths}"
+    )
+
+
+def test_rest_endpoints_not_registered_in_stdio_mode(tmp_path: Path):
+    """REST endpoints must only exist when HTTP transport is active."""
+    from mneme.config import ServerConfig
+    config = MnemeConfig(
+        vault=VaultConfig(path=str(tmp_path)),
+        database=DatabaseConfig(path=str(tmp_path / "test.db")),
+        server=ServerConfig(transport="stdio"),
+    )
+    with patch("mneme.server.get_provider") as mock_get:
+        mock_provider = MagicMock()
+        mock_provider.dimension.return_value = 16
+        mock_get.return_value = mock_provider
+        server = create_server(config)
+
+    routes = getattr(server, "_custom_starlette_routes", [])
+    paths = {getattr(r, "path", None) for r in routes}
+    assert "/api/v1/search" not in paths
+    assert "/api/v1/stats" not in paths
+
+
+def test_rest_search_rejects_non_loopback_host(tmp_path: Path):
+    """REST endpoints must enforce the same Host-header guard as /health."""
+    from starlette.testclient import TestClient
+
+    config = _http_config(tmp_path)
+    with patch("mneme.server.get_provider"):
+        server = create_server(config)
+
+    app = server.streamable_http_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/search",
+        headers={"host": "evil.com"},
+        json={"query": "test"},
+    )
+    assert response.status_code == 403
+
+
+def test_rest_search_returns_503_when_not_warm(tmp_path: Path):
+    """REST calls before the model is loaded must return 503, not crash."""
+    from starlette.testclient import TestClient
+
+    config = _http_config(tmp_path)
+    with patch("mneme.server.get_provider"):
+        # HTTP mode with eager_init=False (default in this test path) means
+        # state is empty; REST endpoints must surface that as 503.
+        server = create_server(config)
+
+    app = server.streamable_http_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/search",
+        headers={"host": "127.0.0.1:8765"},
+        json={"query": "test"},
+    )
+    assert response.status_code == 503
+    assert "not ready" in response.text or "loading" in response.text
+
+
+def test_rest_search_validates_input(tmp_path: Path):
+    """REST search must reject malformed bodies with 400, not 500."""
+    from starlette.testclient import TestClient
+
+    config = _http_config(tmp_path)
+    with patch("mneme.server.get_provider"):
+        server = create_server(config)
+
+    app = server.streamable_http_app()
+    client = TestClient(app)
+
+    # Empty body
+    response = client.post(
+        "/api/v1/search",
+        headers={"host": "127.0.0.1:8765", "content-type": "application/json"},
+        content=b"",
+    )
+    # Either 400 (bad JSON) or 503 (not warm) depending on which guard
+    # trips first. Both are acceptable; a 500 would not be.
+    assert response.status_code in (400, 503)

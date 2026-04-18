@@ -668,4 +668,196 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
                 }
             )
 
+        # ------------------------------------------------------------------
+        # REST API — lightweight JSON endpoints for in-process callers
+        # (Obsidian plugin). Same data as the MCP tools but without the
+        # JSON-RPC session handshake. All endpoints:
+        #   - enforce the loopback Host-header check,
+        #   - return 503 if the server isn't warm yet,
+        #   - delegate to the same state-dict the MCP tools use.
+        # These are NOT an MCP replacement — external clients should keep
+        # using /mcp. Their purpose is to eliminate per-call Python-subprocess
+        # cold-start (2-3s each) when the Obsidian plugin issues its own
+        # in-app searches.
+        # ------------------------------------------------------------------
+
+        def _rest_guard(request: Request) -> JSONResponse | None:
+            """Shared guard: loopback check + init-complete. Returns a
+            JSONResponse to return-early, or None when the request is OK."""
+            if not _host_is_loopback(request.headers.get("host", "")):
+                return JSONResponse({"error": "forbidden"}, status_code=403)
+            if "provider" not in state:
+                return JSONResponse(
+                    {"error": "server not ready — model still loading"},
+                    status_code=503,
+                )
+            if "init_error" in state:
+                return JSONResponse(
+                    {"error": f"init failed: {state['init_error']}"},
+                    status_code=503,
+                )
+            return None
+
+        @mcp.custom_route("/api/v1/search", methods=["POST"])
+        async def rest_search(request: Request) -> JSONResponse:
+            guard = _rest_guard(request)
+            if guard is not None:
+                return guard
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+            query = body.get("query")
+            if not isinstance(query, str) or not query.strip():
+                return JSONResponse({"error": "query (non-empty string) required"}, status_code=400)
+            top_k = max(1, min(int(body.get("top_k", 10)), 100))
+            tags = body.get("tags")
+            folders = body.get("folders")
+            after = body.get("after")
+            if after is not None:
+                try:
+                    from datetime import datetime as _dt
+                    _dt.fromisoformat(after)
+                except ValueError:
+                    return JSONResponse(
+                        {"error": f"invalid 'after' date: {after!r}"},
+                        status_code=400,
+                    )
+            start = time.monotonic()
+            results = state["search"].search(
+                query=query, top_k=top_k, tags=tags, folders=folders, after=after,
+            )
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            return JSONResponse({
+                "results": [
+                    {
+                        "path": r.note_path,
+                        "title": r.note_title,
+                        "heading_path": r.heading_path,
+                        "content": r.content[:1500],
+                        "score": round(r.score, 4),
+                        "tags": r.tags,
+                    }
+                    for r in results
+                ],
+                "query": query,
+                "total_results": len(results),
+                "search_time_ms": elapsed_ms,
+            })
+
+        @mcp.custom_route("/api/v1/similar", methods=["POST"])
+        async def rest_similar(request: Request) -> JSONResponse:
+            guard = _rest_guard(request)
+            if guard is not None:
+                return guard
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+            path = body.get("path")
+            if not isinstance(path, str):
+                return JSONResponse({"error": "path (string) required"}, status_code=400)
+            normalized = normalize_vault_path(path)
+            if normalized is None:
+                return JSONResponse({"error": f"invalid vault path: {path}"}, status_code=400)
+            top_k = max(1, min(int(body.get("top_k", 5)), 50))
+            results = state["search"].get_similar(path=normalized, top_k=top_k)
+            return JSONResponse({
+                "results": [
+                    {
+                        "path": r.note_path,
+                        "title": r.note_title,
+                        "heading_path": r.heading_path,
+                        "content": r.content[:1500],
+                        "score": round(r.score, 4),
+                        "tags": r.tags,
+                    }
+                    for r in results
+                ],
+                "source_path": normalized,
+                "total_results": len(results),
+            })
+
+        @mcp.custom_route("/api/v1/stats", methods=["GET"])
+        async def rest_stats(request: Request) -> JSONResponse:
+            guard = _rest_guard(request)
+            if guard is not None:
+                return guard
+            stats = state["store"].get_stats(
+                embedding_model=state["config"].embedding.model
+            )
+            return JSONResponse({
+                "total_notes": stats.total_notes,
+                "total_chunks": stats.total_chunks,
+                "last_indexed": stats.last_indexed,
+                "embedding_model": stats.embedding_model,
+                "db_size_mb": stats.db_size_mb,
+            })
+
+        @mcp.custom_route("/api/v1/vault-health", methods=["POST"])
+        async def rest_vault_health(request: Request) -> JSONResponse:
+            guard = _rest_guard(request)
+            if guard is not None:
+                return guard
+            try:
+                body = await request.json() if await request.body() else {}
+            except Exception:
+                return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+            stale_days = int(body.get("stale_days", 30))
+            similarity_threshold = float(body.get("similarity_threshold", 0.85))
+            checks = body.get("checks")
+            valid_checks = {"orphans", "weak_links", "stale", "duplicates"}
+            all_checks = checks is None
+            if not all_checks:
+                if not isinstance(checks, list):
+                    return JSONResponse(
+                        {"error": "checks must be a list or null"},
+                        status_code=400,
+                    )
+                unknown = set(checks) - valid_checks
+                if unknown:
+                    return JSONResponse(
+                        {"error": f"unknown checks: {sorted(unknown)}, valid: {sorted(valid_checks)}"},
+                        status_code=400,
+                    )
+
+            gardener: VaultGardener = state["gardener"]
+            report: dict = {}
+            if all_checks or "orphans" in checks:
+                report["orphan_pages"] = gardener.find_orphans()
+            if all_checks or "weak_links" in checks:
+                report["weakly_linked"] = gardener.find_weakly_linked(top_k=10)
+            if all_checks or "stale" in checks:
+                report["stale_notes"] = gardener.find_stale_notes(days=stale_days)
+            if all_checks or "duplicates" in checks:
+                report["near_duplicates"] = gardener.find_near_duplicates(
+                    threshold=similarity_threshold
+                )
+            return JSONResponse(report)
+
+        @mcp.custom_route("/api/v1/reindex", methods=["POST"])
+        async def rest_reindex(request: Request) -> JSONResponse:
+            guard = _rest_guard(request)
+            if guard is not None:
+                return guard
+            try:
+                body = await request.json() if await request.body() else {}
+            except Exception:
+                return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+            full = bool(body.get("full", False))
+            # Reindex can be long — run it in a worker thread so the async
+            # event loop isn't blocked. Starlette's run_in_threadpool is the
+            # idiomatic way.
+            from starlette.concurrency import run_in_threadpool
+            result = await run_in_threadpool(
+                state["indexer"].index_vault, full
+            )
+            state["search"].invalidate_centrality_cache()
+            return JSONResponse({
+                "indexed": result.indexed,
+                "skipped": result.skipped,
+                "deleted": result.deleted,
+                "duration_seconds": round(result.duration_seconds, 2),
+            })
+
     return mcp

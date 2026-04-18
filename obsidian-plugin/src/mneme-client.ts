@@ -18,11 +18,57 @@ const execFileAsync = promisify(execFile);
 export class MnemeClient {
   private serverProcess: ChildProcess | null = null;
   private configUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // HTTP fast-path: when set, search/similar/stats/reindex route through
+  // the warm HTTP server instead of spawning a Python process per call.
+  // Set by startHttpServer() once the server is confirmed running.
+  private httpPort: number | null = null;
 
   constructor(private mnemePath: string = "mneme") {}
 
   setPath(path: string): void {
     this.mnemePath = path;
+  }
+
+  /** Enable the HTTP fast-path. Subsequent search/similar/stats calls
+   * will try the REST endpoints first and fall back to CLI on error. */
+  setHttpPort(port: number | null): void {
+    this.httpPort = port;
+  }
+
+  /** Internal: fetch a REST endpoint on the warm HTTP server. Returns
+   * parsed JSON on success, or throws with `http-down` / `http-error`
+   * so callers can cleanly fall back to CLI. */
+  private async restCall(
+    path: string,
+    method: "GET" | "POST",
+    body?: unknown,
+    timeoutMs: number = 30000,
+  ): Promise<unknown> {
+    if (this.httpPort === null) {
+      throw new Error("http-down: no port configured");
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`http://127.0.0.1:${this.httpPort}${path}`, {
+        method,
+        signal: controller.signal,
+        headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      if (!response.ok) {
+        // 503 = server still warming, 4xx = our mistake, 5xx = other
+        throw new Error(`http-error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (err) {
+      // AbortError, network error, non-2xx — caller can fall back to CLI.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("http-")) throw err;
+      throw new Error(`http-down: ${msg}`);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Debounced config update. Multiple calls with the same key within
@@ -296,8 +342,24 @@ export class MnemeClient {
     }
   }
 
-  /** Search the vault */
+  /** Search the vault.
+   *
+   * Tries the warm HTTP server first (~10ms round-trip) and falls back to
+   * the CLI subprocess (2-3s cold per call) only if the HTTP path is
+   * unreachable. The fallback keeps the plugin functional if the user
+   * disabled autoStartServer or the server crashed between calls.
+   */
   async search(query: string, topK?: number): Promise<SearchResult[]> {
+    if (this.httpPort !== null) {
+      try {
+        const r = (await this.restCall("/api/v1/search", "POST", {
+          query, top_k: topK ?? 10,
+        })) as { results?: SearchResult[] };
+        return r.results || [];
+      } catch {
+        // fall through to CLI
+      }
+    }
     const args = ["search", query, "--json"];
     if (topK) args.push("--top-k", String(topK));
     const result = (await this.runArgs(args)) as { results?: SearchResult[] };
@@ -306,6 +368,16 @@ export class MnemeClient {
 
   /** Find semantically similar notes via average chunk embedding */
   async similar(path: string, topK?: number): Promise<SearchResult[]> {
+    if (this.httpPort !== null) {
+      try {
+        const r = (await this.restCall("/api/v1/similar", "POST", {
+          path, top_k: topK ?? 5,
+        })) as { results?: SearchResult[] };
+        return r.results || [];
+      } catch {
+        // fall through to CLI
+      }
+    }
     const args = ["similar", path, "--json"];
     if (topK) args.push("--top-k", String(topK));
     const result = (await this.runArgs(args)) as { results?: SearchResult[] };
@@ -314,11 +386,30 @@ export class MnemeClient {
 
   /** Get vault statistics */
   async getStatus(): Promise<VaultStats> {
+    if (this.httpPort !== null) {
+      try {
+        return (await this.restCall("/api/v1/stats", "GET")) as VaultStats;
+      } catch {
+        // fall through to CLI
+      }
+    }
     return (await this.runArgs(["status", "--json"])) as VaultStats;
   }
 
   /** Reindex the vault */
   async reindex(full: boolean = false): Promise<ReindexResult> {
+    if (this.httpPort !== null) {
+      try {
+        return (await this.restCall(
+          "/api/v1/reindex",
+          "POST",
+          { full },
+          300000,
+        )) as ReindexResult;
+      } catch {
+        // fall through to CLI
+      }
+    }
     const args = ["reindex", "--json"];
     if (full) args.push("--full");
     return (await this.runArgs(args, 300000)) as ReindexResult;
@@ -326,6 +417,18 @@ export class MnemeClient {
 
   /** Run vault health check */
   async healthCheck(): Promise<HealthReport> {
+    if (this.httpPort !== null) {
+      try {
+        return (await this.restCall(
+          "/api/v1/vault-health",
+          "POST",
+          {},
+          120000,
+        )) as HealthReport;
+      } catch {
+        // fall through to CLI
+      }
+    }
     return (await this.runArgs(["health", "--json"], 120000)) as HealthReport;
   }
 
