@@ -28,6 +28,9 @@ classifiers = [
 ]
 dependencies = [
     "mcp[cli]>=1.20,<2",
+    # sentence-transformers is the default embedding provider. The lean
+    # alternative lives in mneme.embeddings.raw_transformers and needs only
+    # transformers + torch (set embedding.provider = "raw-transformers").
     "sentence-transformers>=3.0",
     "sqlite-vec>=0.1.6,<0.2",
     "huggingface-hub>=0.20",

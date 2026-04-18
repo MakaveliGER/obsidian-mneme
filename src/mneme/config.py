@@ -27,7 +27,7 @@ class VaultConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    provider: str = "sentence-transformers"  # "sentence-transformers" | "onnx"
+    provider: str = "sentence-transformers"  # "sentence-transformers" | "raw-transformers" | "onnx"
     model: str = "BAAI/bge-m3"
     backend: str = "cpu"  # ONNX only: "cpu" | "directml" | "cuda" | "rocm"
     device: str = "auto"  # "auto" | "cpu" | "cuda"
