@@ -79,12 +79,63 @@ def init(ctx: click.Context) -> None:
 
 
 @main.command()
-def serve():
-    """Start the MCP server (stdio transport for Claudian)."""
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "streamable-http"]),
+    default=None,
+    help="MCP transport. Overrides config.server.transport. Default: stdio.",
+)
+@click.option(
+    "--host",
+    default=None,
+    help="HTTP bind address (streamable-http only). Default: 127.0.0.1.",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=None,
+    help="HTTP port (streamable-http only). Default: 8765.",
+)
+def serve(transport: str | None, host: str | None, port: int | None):
+    """Start the MCP server.
+
+    Two transports are supported:
+
+    \b
+      stdio            — default. Speaks MCP over stdin/stdout for Claude
+                         Desktop, Claudian, and Claude Code.
+      streamable-http  — long-running HTTP server. Model is pre-warmed at
+                         startup (no first-call latency). Exposes /mcp and
+                         /health on 127.0.0.1:8765 by default.
+    """
     import logging
     import sys
 
-    # Log to stderr so it doesn't interfere with stdio MCP transport
+    config = load_config()
+    if not config.vault.path:
+        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
+        raise SystemExit(1)
+
+    # CLI flags override config
+    if transport is not None:
+        config.server.transport = transport
+    if host is not None:
+        config.server.host = host
+    if port is not None:
+        config.server.port = port
+
+    chosen = config.server.transport
+    if chosen not in ("stdio", "streamable-http"):
+        click.echo(
+            f"Error: invalid transport '{chosen}'. "
+            "Use 'stdio' or 'streamable-http'.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    # For stdio, stdout is the MCP JSON-RPC channel — logs MUST go to stderr
+    # so they don't corrupt the protocol. HTTP mode has stdout free, but we
+    # still default to stderr for consistency.
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(message)s",
@@ -92,15 +143,18 @@ def serve():
         stream=sys.stderr,
     )
 
-    config = load_config()
-    if not config.vault.path:
-        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
-        raise SystemExit(1)
-
     from mneme.server import create_server
 
     server = create_server(config)
-    server.run(transport="stdio")
+    if chosen == "streamable-http":
+        click.echo(
+            f"Mneme HTTP server on http://{config.server.host}:{config.server.port}/mcp "
+            f"(health: http://{config.server.host}:{config.server.port}/health)",
+            err=True,
+        )
+        server.run(transport="streamable-http")
+    else:
+        server.run(transport="stdio")
 
 
 @main.command()

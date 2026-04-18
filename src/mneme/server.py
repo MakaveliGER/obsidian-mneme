@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
 import json
 import logging
 import time
+from collections.abc import AsyncIterator
 
 from mcp.server.fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from mneme.config import (
     MCP_FORBIDDEN_SECTIONS,
@@ -32,14 +36,63 @@ from mneme.paths import normalize_vault_path
 
 
 def create_server(config: MnemeConfig | None = None) -> FastMCP:
-    """Create and configure the Mneme MCP server with all tools."""
+    """Create and configure the Mneme MCP server with all tools.
+
+    Transport is chosen from ``config.server.transport``:
+      * "stdio"            — eager init at construction time (unchanged).
+      * "streamable-http"  — init deferred to the FastMCP lifespan so the model
+                             is pre-warmed when the HTTP server starts, not on
+                             first request. Watcher + DB handles also live in
+                             the lifespan so they're cleaned up on shutdown.
+    """
     if config is None:
         config = load_config()
 
-    mcp = FastMCP("mneme", instructions="Semantic Obsidian vault search. Use search_notes to find relevant notes.")
+    transport = config.server.transport
+    http_mode = transport == "streamable-http"
 
     # Eagerly initialized at server startup — model pre-loaded so first query is fast
     state: dict = {}
+
+    if http_mode:
+        @contextlib.asynccontextmanager
+        async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
+            # Pre-warm the embedding model and open the store *before* the HTTP
+            # server starts accepting requests — the whole point of HTTP mode.
+            try:
+                _initialize()
+            except Exception as e:
+                logger.error("Mneme initialization failed: %s", e)
+                state["init_error"] = str(e)
+            try:
+                yield state
+            finally:
+                watcher = state.pop("watcher", None)
+                if watcher is not None:
+                    try:
+                        watcher.stop()
+                    except Exception as e:
+                        logger.warning("Watcher stop failed: %s", e)
+                store = state.get("store")
+                if store is not None:
+                    try:
+                        store.close()
+                    except Exception as e:
+                        logger.warning("Store close failed: %s", e)
+
+        mcp = FastMCP(
+            "mneme",
+            instructions="Semantic Obsidian vault search. Use search_notes to find relevant notes.",
+            host=config.server.host,
+            port=config.server.port,
+            streamable_http_path="/mcp",
+            lifespan=lifespan,
+        )
+    else:
+        mcp = FastMCP(
+            "mneme",
+            instructions="Semantic Obsidian vault search. Use search_notes to find relevant notes.",
+        )
 
     def _initialize() -> None:
         t0 = time.monotonic()
@@ -80,12 +133,15 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
 
         logger.info("Mneme ready (%.1fs)", time.monotonic() - t0)
 
-    # Initialize eagerly — block until model is loaded
-    try:
-        _initialize()
-    except Exception as e:
-        logger.error("Mneme initialization failed: %s", e)
-        state["init_error"] = str(e)
+    # For stdio: initialize eagerly — block until model is loaded.
+    # For HTTP: the lifespan above handles init so the server object can be
+    # constructed without touching disk (useful for tests).
+    if not http_mode:
+        try:
+            _initialize()
+        except Exception as e:
+            logger.error("Mneme initialization failed: %s", e)
+            state["init_error"] = str(e)
 
     def _check_init() -> dict | None:
         """Return error dict if server failed to initialize, else None."""
@@ -446,5 +502,35 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
 2. Nutze search_notes mit Schlüsselwörtern aus der Notiz um verwandte Inhalte zu finden
 3. Vergleiche: Welche semantisch ähnlichen Notizen sind NICHT verlinkt?
 4. Schlage konkrete [[Wikilinks]] vor die hinzugefügt werden sollten"""
+
+    # ------------------------------------------------------------------
+    # HTTP-only: /health endpoint for liveness checks and autostart probes
+    # ------------------------------------------------------------------
+    if http_mode:
+        @mcp.custom_route("/health", methods=["GET"])
+        async def health(_request: Request) -> JSONResponse:  # noqa: ARG001
+            """Liveness/readiness probe. 200 as soon as the server is up;
+            ``model_loaded`` flips to True once the lifespan pre-warm finishes.
+            """
+            store = state.get("store")
+            db_size_mb = 0.0
+            if store is not None:
+                try:
+                    stats = store.get_stats(
+                        embedding_model=state["config"].embedding.model
+                    )
+                    db_size_mb = float(stats.db_size_mb)
+                except Exception:
+                    # Don't let a transient DB issue fail the health probe —
+                    # just report 0 so the caller sees the server is alive.
+                    db_size_mb = 0.0
+            return JSONResponse(
+                {
+                    "status": "ok",
+                    "model_loaded": "provider" in state,
+                    "db_size_mb": db_size_mb,
+                    "init_error": state.get("init_error"),
+                }
+            )
 
     return mcp
