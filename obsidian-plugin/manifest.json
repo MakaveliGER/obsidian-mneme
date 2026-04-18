@@ -1,7 +1,7 @@
 {
   "id": "mneme",
   "name": "Mneme",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "minAppVersion": "1.4.0",
   "description": "Semantic vault search — hybrid vector + keyword search with graph-aware scoring. Local RAG pipeline powered by BGE-M3.",
   "author": "André Sagasser",
