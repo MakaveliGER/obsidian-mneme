@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import threading
+import time
 from pathlib import Path
 
 from watchdog.events import (
@@ -20,7 +21,20 @@ logger = logging.getLogger(__name__)
 
 
 class _VaultEventHandler(FileSystemEventHandler):
-    """Internal watchdog handler that filters events and delegates to the indexer."""
+    """Internal watchdog handler that filters events and delegates to the indexer.
+
+    Uses a **global coalescing debounce**: events accumulate into a pending
+    set, and a single timer fires once activity has quiesced for
+    ``debounce_delay`` seconds. This coalesces bulk operations (Obsidian
+    Sync pull, git merge, VS Code "Save All") into a single indexing pass
+    instead of N serialized per-file reindexes, each holding the SQLite
+    write lock while interactive search queries wait behind it.
+
+    A ``max_defer`` cap prevents continuous-typing starvation: if the first
+    pending event is older than max_defer, the batch fires even if events
+    keep arriving. Deletes remain synchronous — we can't index a missing
+    file anyway and a stale row in the DB is worse than a lock blip.
+    """
 
     def __init__(
         self,
@@ -29,13 +43,18 @@ class _VaultEventHandler(FileSystemEventHandler):
         exclude_patterns: list[str],
         debounce_delay: float = 2.0,
         on_graph_change=None,
+        max_defer: float = 10.0,
     ) -> None:
         super().__init__()
         self._vault_path = vault_path
         self._indexer = indexer
         self._exclude_patterns = exclude_patterns
         self._debounce_delay = debounce_delay
-        self._pending: dict[str, threading.Timer] = {}
+        self._max_defer = max_defer
+        # Global coalescing state — one timer, one pending-set.
+        self._pending_paths: set[Path] = set()
+        self._global_timer: threading.Timer | None = None
+        self._first_event_at: float = 0.0
         self._lock = threading.Lock()
         # Called after any write that may have changed the wikilink graph.
         # Used to invalidate SearchEngine's centrality cache so GARS doesn't
@@ -72,36 +91,87 @@ class _VaultEventHandler(FileSystemEventHandler):
         return True
 
     # ------------------------------------------------------------------
-    # Debouncing
+    # Debouncing — global coalescing
     # ------------------------------------------------------------------
 
-    def _schedule(self, key: str, action) -> None:
-        """Schedule *action* with debounce; cancel any existing timer for *key*."""
-        with self._lock:
-            existing = self._pending.pop(key, None)
-            if existing is not None:
-                existing.cancel()
-            timer = threading.Timer(self._debounce_delay, self._fire, args=(key, action))
-            self._pending[key] = timer
-            timer.daemon = True
-            timer.start()
+    def _schedule(self, path: Path) -> None:
+        """Add *path* to the pending batch and (re)arm the global timer.
 
-    def _fire(self, key: str, action) -> None:
+        If no timer is running, start one. If one is running, cancel and
+        reschedule — unless we've been accumulating longer than max_defer,
+        in which case we let the existing timer fire to avoid starvation.
+        """
+        now = time.monotonic()
+        should_fire_now = False
         with self._lock:
-            self._pending.pop(key, None)
-        action()
+            self._pending_paths.add(path)
+            if self._first_event_at == 0.0:
+                self._first_event_at = now
+
+            elapsed = now - self._first_event_at
+            if elapsed >= self._max_defer:
+                # Don't reset the timer — max-defer has been reached, just
+                # let whatever is scheduled (or schedule-now) run soon.
+                if self._global_timer is None:
+                    should_fire_now = True
+            else:
+                # Normal case: reset the timer so quiet settles again.
+                if self._global_timer is not None:
+                    self._global_timer.cancel()
+                timer = threading.Timer(self._debounce_delay, self._fire_batch)
+                timer.daemon = True
+                self._global_timer = timer
+                timer.start()
+
+        if should_fire_now:
+            # Fire outside the lock (callbacks may re-enter).
+            self._fire_batch()
+
+    def _fire_batch(self) -> None:
+        """Drain the pending set and index all paths in one pass."""
+        with self._lock:
+            paths = list(self._pending_paths)
+            self._pending_paths.clear()
+            self._first_event_at = 0.0
+            self._global_timer = None
+
+        if not paths:
+            return
+
+        # Index each file. For large batches this is still N sequential
+        # index_file calls, but they all execute in one wake-up window
+        # rather than being spread across N separate Timer threads that
+        # each acquire the SQLite write lock independently. Search queries
+        # wait once instead of up-to-N times.
+        n_indexed = 0
+        for path in paths:
+            try:
+                if self._indexer.index_file(path):
+                    n_indexed += 1
+            except Exception as e:  # pragma: no cover — keep the watcher alive
+                logger.warning("index_file(%s) failed: %s", path, e)
+
+        if n_indexed > 1:
+            logger.info(
+                "Watcher batch indexed %d files (from %d pending)",
+                n_indexed, len(paths),
+            )
+
+        # One graph-change notification per batch, not per file.
         if self._on_graph_change is not None:
             try:
                 self._on_graph_change()
-            except Exception as e:  # pragma: no cover — callback must never kill the watcher
+            except Exception as e:  # pragma: no cover
                 logger.debug("on_graph_change callback failed: %s", e)
 
     def cancel_all(self) -> None:
-        """Cancel all pending debounce timers."""
+        """Cancel the global debounce timer and drop pending paths."""
         with self._lock:
-            for timer in self._pending.values():
-                timer.cancel()
-            self._pending.clear()
+            if self._global_timer is not None:
+                self._global_timer.cancel()
+                self._global_timer = None
+            self._pending_paths.clear()
+            self._first_event_at = 0.0
 
     # ------------------------------------------------------------------
     # watchdog callbacks
@@ -113,9 +183,8 @@ class _VaultEventHandler(FileSystemEventHandler):
         abs_path: str = event.src_path
         if not self._should_process(abs_path):
             return
-        path = Path(abs_path)
-        logger.debug("Created: %s", path)
-        self._schedule(abs_path, lambda p=path: self._indexer.index_file(p))
+        logger.debug("Created: %s", abs_path)
+        self._schedule(Path(abs_path))
 
     def on_modified(self, event: FileModifiedEvent) -> None:
         if event.is_directory:
@@ -123,9 +192,8 @@ class _VaultEventHandler(FileSystemEventHandler):
         abs_path: str = event.src_path
         if not self._should_process(abs_path):
             return
-        path = Path(abs_path)
-        logger.debug("Modified: %s", path)
-        self._schedule(abs_path, lambda p=path: self._indexer.index_file(p))
+        logger.debug("Modified: %s", abs_path)
+        self._schedule(Path(abs_path))
 
     def on_deleted(self, event: FileDeletedEvent) -> None:
         if event.is_directory:
@@ -135,7 +203,8 @@ class _VaultEventHandler(FileSystemEventHandler):
             return
         rel = self._relative(abs_path)
         logger.debug("Deleted: %s", rel)
-        # No debouncing for deletes — execute immediately.
+        # No debouncing for deletes — execute immediately. A deleted file
+        # that stays in the index is worse than a brief lock blip.
         self._indexer.remove_file(rel)
         if self._on_graph_change is not None:
             try:
@@ -160,11 +229,9 @@ class _VaultEventHandler(FileSystemEventHandler):
             graph_changed = True
 
         if dest_is_md:
-            dest_path = Path(dest)
-            logger.debug("Moved (dest indexed): %s", dest_path)
-            self._schedule(dest, lambda p=dest_path: self._indexer.index_file(p))
-            # _schedule fires the on_graph_change itself after the debounce
-            # runs; don't double-fire it here for the dest.
+            logger.debug("Moved (dest indexed): %s", dest)
+            self._schedule(Path(dest))
+            # _fire_batch fires on_graph_change itself; don't double-fire here.
 
         if graph_changed and not dest_is_md and self._on_graph_change is not None:
             try:
