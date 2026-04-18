@@ -178,7 +178,9 @@ def serve(transport: str | None, host: str | None, port: int | None):
 
     from mneme.server import create_server
 
-    server = create_server(config)
+    # background_init=True → HTTP mode pre-warms the model before the server
+    # starts listening. Stdio mode ignores this flag (always lazy-on-call).
+    server = create_server(config, background_init=True)
     if chosen == "streamable-http":
         click.echo(
             f"Mneme HTTP server on http://{config.server.host}:{config.server.port}/mcp "

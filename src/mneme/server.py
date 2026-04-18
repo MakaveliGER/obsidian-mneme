@@ -74,10 +74,9 @@ def create_server(config: MnemeConfig | None = None, *, background_init: bool = 
     if http_mode:
         @contextlib.asynccontextmanager
         async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
-            # Pre-warm the embedding model and open the store *before* the HTTP
-            # server starts accepting requests — the whole point of HTTP mode.
-            # Use _init_worker so the event is set and _check_init is a no-op.
-            _init_worker()
+            # Model is already warm (we eager-init below, before FastMCP()
+            # is even constructed). Lifespan is only used for graceful
+            # shutdown of watcher + store handles.
             try:
                 yield state
             finally:
@@ -163,6 +162,20 @@ def create_server(config: MnemeConfig | None = None, *, background_init: bool = 
             state["init_error"] = str(e)
         finally:
             _init_done.set()
+
+    # For HTTP mode in production: eager-init at server construction time.
+    # Pre-warms the model BEFORE FastMCP starts its event loop, so /health
+    # responds with model_loaded=True immediately and the first real query
+    # is fast. (Lifespan-based pre-warm was attempted but didn't fire
+    # reliably.) stdio mode keeps lazy-on-first-call init so the handshake
+    # returns in <1s and doesn't hit the 60s client timeout.
+    #
+    # Tests pass background_init=False to skip this; they don't want a real
+    # VaultWatcher spawned on tmp_path.
+    if http_mode and background_init:
+        logger.info("HTTP mode: eager init starting (blocks until model warm)...")
+        _init_worker()
+        logger.info("HTTP mode: eager init done")
 
     def _check_init() -> dict | None:
         """Initialize on first call under lock (stdio only). Return error dict on failure.

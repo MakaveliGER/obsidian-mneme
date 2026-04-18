@@ -77,19 +77,32 @@ export default class MnemePlugin extends Plugin {
     this.onShutdown();
   }
 
-  /** Called when Obsidian layout is ready — start server + optional reindex */
+  /** Called when Obsidian layout is ready — start HTTP server + optional reindex */
   private async onStartup(): Promise<void> {
-    // Auto-start server
+    // Auto-start HTTP server (if enabled and not already running)
     if (this.settings.autoStartServer) {
-      const started = this.client.startServer();
-      if (started) {
-        new Notice("Mneme: Server gestartet", 3000);
-        // Wait briefly for server to initialize before reindex
+      const status = await this.client.startHttpServer(
+        this.settings.serverPort,
+        this.settings.keepServerRunningAfterClose,
+      );
+      if (status === "already-running") {
+        new Notice(
+          `Mneme: Server läuft bereits auf Port ${this.settings.serverPort}`,
+          3000,
+        );
+      } else if (status === "started") {
+        new Notice(
+          `Mneme: HTTP-Server gestartet (Port ${this.settings.serverPort})`,
+          3000,
+        );
+        // Wait briefly for server boot (handshake + tool registration are fast;
+        // model load is lazy on first tool call). 2s is enough for /health to
+        // respond; model pre-warm happens on first request.
         await new Promise((r) => setTimeout(r, 2000));
       } else {
         new Notice(
           "Mneme: Server konnte nicht gestartet werden. Prüfe den Pfad in den Settings.",
-          8000
+          8000,
         );
         return;
       }
@@ -102,7 +115,7 @@ export default class MnemePlugin extends Plugin {
         if (result.indexed > 0 || result.deleted > 0) {
           new Notice(
             `Mneme: Sync abgeschlossen — ${result.indexed} aktualisiert, ${result.deleted} gelöscht (${result.duration_seconds.toFixed(1)}s)`,
-            5000
+            5000,
           );
         }
         this.statusBar?.refresh();
@@ -112,7 +125,7 @@ export default class MnemePlugin extends Plugin {
     }
   }
 
-  /** Called when Obsidian closes — optional reindex + stop server */
+  /** Called when Obsidian closes — optional reindex, keep server running by default */
   private async onShutdown(): Promise<void> {
     // Reindex on close
     if (this.settings.reindexOnClose) {
@@ -123,8 +136,12 @@ export default class MnemePlugin extends Plugin {
       }
     }
 
-    // Stop server
-    this.client.stopServer();
+    // Only stop the server if the user opted into the non-persistent mode.
+    // The default is to keep it running so Claudian (and the next Obsidian
+    // session) find it already warm — cold-start cost is paid once per boot.
+    if (!this.settings.keepServerRunningAfterClose) {
+      this.client.stopServer();
+    }
   }
 
   async loadSettings(): Promise<void> {

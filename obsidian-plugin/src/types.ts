@@ -32,6 +32,8 @@ export interface MnemeSettings {
 
   // Server & Sync
   autoStartServer: boolean;
+  serverPort: number;
+  keepServerRunningAfterClose: boolean;
   reindexOnStart: boolean;
   reindexOnClose: boolean;
 
@@ -65,7 +67,9 @@ export const DEFAULT_SETTINGS: MnemeSettings = {
   graphWeight: 0.3,
 
   hookMatchers: ["Read"],
-  autoStartServer: false,
+  autoStartServer: true,
+  serverPort: 8765,
+  keepServerRunningAfterClose: false,
   reindexOnStart: true,
   reindexOnClose: false,
   healthExcludePatterns: [],

@@ -24,10 +24,77 @@ export class MnemeClient {
     this.mnemePath = path;
   }
 
-  /** Start the Mneme MCP server as a background process */
+  /** Ping the HTTP server's /health endpoint. Returns true if it responds. */
+  async isHttpServerHealthy(port: number = 8765): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Start the Mneme HTTP server as a detached background process.
+   *
+   * Returns "already-running" if an HTTP server is already responding on
+   * the configured port (Obsidian-restart case), "started" if we spawned
+   * a new one, "failed" on error.
+   *
+   * The process is detached + unref'd so it survives Obsidian close — this
+   * preserves the cold-start cost across sessions and means Claudian finds
+   * the server warm even if Obsidian is closed.
+   */
+  async startHttpServer(
+    port: number = 8765,
+    detached: boolean = true
+  ): Promise<"started" | "already-running" | "failed"> {
+    if (await this.isHttpServerHealthy(port)) {
+      return "already-running";
+    }
+    try {
+      const child = spawn(
+        this.mnemePath,
+        ["serve", "--transport", "streamable-http", "--port", String(port)],
+        {
+          stdio: "ignore",
+          detached,
+          windowsHide: true,
+          env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        }
+      );
+
+      child.on("error", () => {
+        this.serverProcess = null;
+      });
+
+      if (detached) {
+        // Decouple from parent — Obsidian can exit while the server keeps
+        // running. We deliberately do NOT keep a reference here.
+        child.unref();
+        this.serverProcess = null;
+      } else {
+        this.serverProcess = child;
+        child.on("exit", () => {
+          this.serverProcess = null;
+        });
+      }
+      return "started";
+    } catch {
+      this.serverProcess = null;
+      return "failed";
+    }
+  }
+
+  /** Legacy stdio-spawn — kept for tests / backward compat, not used in v0.3+ */
   startServer(): boolean {
     if (this.serverProcess && !this.serverProcess.killed) {
-      return true; // already running
+      return true;
     }
     try {
       this.serverProcess = spawn(this.mnemePath, ["serve"], {
@@ -35,15 +102,12 @@ export class MnemeClient {
         detached: false,
         env: { ...process.env, PYTHONIOENCODING: "utf-8" },
       });
-
       this.serverProcess.on("error", () => {
         this.serverProcess = null;
       });
-
       this.serverProcess.on("exit", () => {
         this.serverProcess = null;
       });
-
       return true;
     } catch {
       this.serverProcess = null;
@@ -51,7 +115,7 @@ export class MnemeClient {
     }
   }
 
-  /** Stop the Mneme server process */
+  /** Stop the Mneme server process we spawned (only works if NOT detached) */
   stopServer(): void {
     if (this.serverProcess && !this.serverProcess.killed) {
       this.serverProcess.kill();
@@ -59,7 +123,7 @@ export class MnemeClient {
     }
   }
 
-  /** Check if server process is running */
+  /** Check if our tracked server process is running (in-process ref only) */
   isServerRunning(): boolean {
     return this.serverProcess !== null && !this.serverProcess.killed;
   }
