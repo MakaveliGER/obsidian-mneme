@@ -35,24 +35,27 @@ logger = logging.getLogger(__name__)
 from mneme.paths import normalize_vault_path
 
 
-def create_server(config: MnemeConfig | None = None, *, background_init: bool = False) -> FastMCP:
+def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False) -> FastMCP:
     """Create and configure the Mneme MCP server with all tools.
 
     Args:
         config: MnemeConfig. Loaded from default path if None.
-        background_init: Reserved for tests. Kept for backward compat; tests
-            pass ``False`` to avoid spawning the real VaultWatcher on tmp dirs.
-            Production code path is determined by ``config.server.transport``.
+        eager_init: When True *and* transport is streamable-http, pre-warm
+            the embedding model + open the store + start the file watcher
+            at construction time — before FastMCP's event loop starts.
+            This is how production HTTP serves. Tests pass False to avoid
+            spawning a real VaultWatcher on a tmp dir. Ignored for stdio
+            mode, which always uses lazy-on-first-tool-call init so the
+            MCP handshake returns in <1s.
 
     Transport is chosen from ``config.server.transport``:
       * "stdio"            — lazy init on first tool call. MCP handshake returns
                              immediately so clients don't hit init-timeouts; the
                              heavy model load runs inside the first tool call's
                              dispatch thread.
-      * "streamable-http"  — init deferred to the FastMCP lifespan so the model
-                             is pre-warmed when the HTTP server starts, not on
-                             first request. Watcher + DB handles also live in
-                             the lifespan so they're cleaned up on shutdown.
+      * "streamable-http"  — with eager_init=True, model is pre-warmed at
+                             construction. Watcher + DB handles are cleaned up
+                             in the lifespan on shutdown.
     """
     if config is None:
         config = load_config()
@@ -170,9 +173,9 @@ def create_server(config: MnemeConfig | None = None, *, background_init: bool = 
     # reliably.) stdio mode keeps lazy-on-first-call init so the handshake
     # returns in <1s and doesn't hit the 60s client timeout.
     #
-    # Tests pass background_init=False to skip this; they don't want a real
+    # Tests pass eager_init=False to skip this; they don't want a real
     # VaultWatcher spawned on tmp_path.
-    if http_mode and background_init:
+    if http_mode and eager_init:
         logger.info("HTTP mode: eager init starting (blocks until model warm)...")
         _init_worker()
         logger.info("HTTP mode: eager init done")
