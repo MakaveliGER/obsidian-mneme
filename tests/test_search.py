@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from mneme.store import SearchResult
-from mneme.search import rrf_fusion, SearchEngine
+from mneme.search import rrf_fusion, SearchEngine, diversify_by_file, clean_snippet
 
 
 # ---------------------------------------------------------------------------
@@ -267,3 +267,101 @@ def test_get_similar_deduplicates_by_note_path():
     )
     alpha = next(r for r in results if r.note_path == "notes/alpha.md")
     assert alpha.score == 0.9, "must keep highest-scoring chunk per note"
+
+
+# ---------------------------------------------------------------------------
+# diversify_by_file tests
+# ---------------------------------------------------------------------------
+
+def test_diversify_by_file_caps_per_note():
+    """Same-file chunks beyond max_per_file are dropped while order is kept."""
+    results = [
+        make_result(1, "big.md", score=0.9),
+        make_result(2, "big.md", score=0.8),
+        make_result(3, "big.md", score=0.7),
+        make_result(4, "big.md", score=0.6),   # must be dropped
+        make_result(5, "other.md", score=0.5),
+        make_result(6, "big.md", score=0.4),   # must be dropped too
+    ]
+    out = diversify_by_file(results, max_per_file=3)
+
+    paths = [r.note_path for r in out]
+    assert paths == ["big.md", "big.md", "big.md", "other.md"]
+    # best-scoring chunks from big.md survive (order preserved)
+    big_scores = [r.score for r in out if r.note_path == "big.md"]
+    assert big_scores == [0.9, 0.8, 0.7]
+
+
+def test_diversify_by_file_preserves_diverse_input():
+    """When no file exceeds max_per_file, nothing changes."""
+    results = [
+        make_result(1, "a.md"),
+        make_result(2, "b.md"),
+        make_result(3, "c.md"),
+    ]
+    assert diversify_by_file(results, max_per_file=3) == results
+
+
+def test_diversify_by_file_empty_input():
+    assert diversify_by_file([], max_per_file=3) == []
+
+
+# ---------------------------------------------------------------------------
+# clean_snippet tests
+# ---------------------------------------------------------------------------
+
+def test_clean_snippet_strips_fenced_code_blocks():
+    text = "Intro before code.\n```python\ndef foo():\n    return 42\n```\nMore prose after."
+    out = clean_snippet(text, max_chars=200)
+    assert "def foo" not in out
+    assert "return 42" not in out
+    assert "Intro before code" in out
+    assert "More prose after" in out
+
+
+def test_clean_snippet_strips_markdown_tables():
+    text = "Heading context.\n| col1 | col2 | col3 |\n|------|------|------|\n| a | b | c |\nAfter the table."
+    out = clean_snippet(text, max_chars=200)
+    assert "col1" not in out
+    assert "|" not in out
+    assert "Heading context" in out
+    assert "After the table" in out
+
+
+def test_clean_snippet_truncates_at_sentence_boundary_when_possible():
+    # First sentence is 46 chars — well past the 60% mark of max_chars=50,
+    # so the snippet should cut at the sentence boundary instead of adding
+    # an ellipsis mid-word.
+    text = "This is a long sentence filling the budget. Rest is discarded entirely."
+    out = clean_snippet(text, max_chars=50)
+    assert out.endswith(".")
+    assert len(out) <= 50
+
+
+def test_clean_snippet_falls_back_to_ellipsis_for_early_sentence_breaks():
+    # Sentence break at char 15 — only 30% through a 50-char budget. Cutting
+    # there would waste too much capacity, so ellipsis-cut is preferred.
+    text = "Short intro. Much longer second sentence continues way past the cut mark here."
+    out = clean_snippet(text, max_chars=50)
+    assert out.endswith("…")
+    assert len(out) <= 51  # +1 for the ellipsis character
+
+
+def test_clean_snippet_ellipsis_when_no_sentence_break():
+    text = "A very long word-chain without punctuation that just keeps going endlessly and endlessly"
+    out = clean_snippet(text, max_chars=30)
+    assert out.endswith("…")
+    # ellipsis accounts for extra char, so length ≤ max+1
+    assert len(out) <= 31
+
+
+def test_clean_snippet_collapses_whitespace():
+    text = "Multiple   spaces\n\n\nand\tnewlines   collapse"
+    out = clean_snippet(text, max_chars=200)
+    assert "   " not in out
+    assert "\n" not in out
+
+
+def test_clean_snippet_empty_input():
+    assert clean_snippet("", max_chars=200) == ""
+    assert clean_snippet(None, max_chars=200) == ""  # type: ignore[arg-type]

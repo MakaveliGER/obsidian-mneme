@@ -3,12 +3,62 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from mneme.store import Store, SearchResult
 from mneme.embeddings.base import EmbeddingProvider
 from mneme.reranker import Reranker
 
 logger = logging.getLogger(__name__)
+
+
+def diversify_by_file(
+    results: list[SearchResult], max_per_file: int = 3
+) -> list[SearchResult]:
+    """Cap how many chunks from the same note can appear in the output.
+
+    Preserves input order (so the best-ranked chunks per file survive the
+    cap). Prevents a single large note from dominating top-k when it has
+    many chunks that score well — the live test showed a 70-page research
+    doc filling 4 of 5 slots, pushing out the dedicated domain notes.
+
+    Call site: after RRF fusion, before the top_k slice / reranker pass.
+    """
+    seen: dict[str, int] = {}
+    out: list[SearchResult] = []
+    for r in results:
+        count = seen.get(r.note_path, 0)
+        if count < max_per_file:
+            out.append(r)
+            seen[r.note_path] = count + 1
+    return out
+
+
+def clean_snippet(text: str, max_chars: int = 200) -> str:
+    """Produce a readable preview snippet from chunk content.
+
+    Strips noise that's unhelpful in an LLM context window or a search-UI
+    preview: fenced code blocks, markdown tables, repeated whitespace.
+    Truncates cleanly at a sentence boundary when one is close to the
+    char limit; otherwise cuts and appends an ellipsis.
+    """
+    if not text:
+        return ""
+    # Fenced code blocks — rarely the right thing to show as a preview
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    # Table rows: lines with 3+ pipes are almost always markdown tables
+    text = "\n".join(line for line in text.splitlines() if line.count("|") < 3)
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars]
+    # Prefer cutting at a sentence boundary if one falls in the back 40%
+    # of the cut — otherwise the ellipsis mid-sentence is fine.
+    last_period = cut.rfind(". ")
+    if last_period > max_chars * 0.6:
+        return cut[: last_period + 1]
+    return cut.rstrip() + "…"
 
 
 def rrf_fusion(
@@ -155,6 +205,13 @@ class SearchEngine:
         vector_w = float(getattr(self.config, "vector_weight", 0.6))
         bm25_w = float(getattr(self.config, "bm25_weight", 0.4))
         fused = rrf_fusion([vector_results, bm25_results], weights=[vector_w, bm25_w])
+
+        # Diversify by file BEFORE slicing to top_k — prevents a large note
+        # with many relevant chunks (e.g. a 70-page research doc) from filling
+        # the top-k output and pushing dedicated domain notes out. Applied
+        # also as input to the reranker so the reranker sees a diverse
+        # candidate pool.
+        fused = diversify_by_file(fused, max_per_file=3)
 
         if self.reranker is not None:
             # Sync GPU before CPU reranker — prevents deadlock on ROCm

@@ -202,6 +202,45 @@ tests, sdist/wheel build).
   relevant only in the narrow case where the plugin's HTTP path is
   unreachable AND no Mneme server is running.
 
+### Changed (Live-Test Feedback, Round 2)
+
+Round-2 feedback from a quality-focused retrieval test pass surfaced
+three UX issues that affect everyone using the tool — fixed here
+rather than deferred to v0.3.2:
+
+- **`relevance_pct` field in all search responses**. Raw RRF scores
+  are structurally small (0.01-0.03) and carry no standalone meaning
+  — absolute numbers like `0.015` read as "all results are miserable"
+  even when they're the best matches in the vault. Every MCP tool
+  (`search_notes`, `get_similar`) and REST endpoint
+  (`/api/v1/search`, `/api/v1/similar`) now returns `relevance_pct`
+  alongside `score`: top result is always 100%, others drop off
+  proportionally. The raw `score` stays in the output for debugging
+  and power users. Applied consistently across all four serialization
+  boundaries so LLM clients see the same calibrated number as the
+  Plugin-UI score badge.
+- **`diversify_by_file` cap in `search_notes`**. The live test found
+  a 70-page research document filling 4 of 5 top-k slots with deep
+  code chunks, pushing dedicated domain notes out entirely. Results
+  from a single note are now capped at 3 chunks, applied after RRF
+  fusion and before the top-k slice (and as input to the reranker,
+  so the reranker's candidate pool is already diverse). The best
+  chunks per note survive the cap; ordering within and across notes
+  is preserved.
+- **`clean_snippet` for result content**. Previous `content[:1500]`
+  truncation dumped raw markdown including fenced code blocks and
+  table rows — noisy in LLM context windows and unreadable in the
+  plugin preview. Snippets are now 200 chars of first-meaningful
+  prose: fenced code blocks stripped, table rows dropped, whitespace
+  collapsed, cut at a sentence boundary when one falls in the last
+  40% of the budget.
+
+None are breaking changes: `score` stays, `content` stays (shorter),
+new `relevance_pct` is additive. `max_per_file` default of 3 is a
+runtime behaviour change but only re-orders results within the same
+top-k that was already returned — no search misses anything it
+couldn't before.
+
 ## [0.3.0] - 2026-04-17
 
 *Internal milestone — never published. Superseded by 0.3.1, which is the
