@@ -106,3 +106,48 @@ def test_server_config_defaults():
     assert cfg.transport == "stdio"
     assert cfg.host == "127.0.0.1"
     assert cfg.port == 8765
+
+
+def test_health_endpoint_response_shape(tmp_path: Path):
+    """/health response must be minimal: {status, model_loaded} only.
+
+    Bigger payloads (db_size_mb, init_error) leak metadata to a browser
+    attacker exploiting DNS rebind. Keep the response tight.
+    """
+    from starlette.testclient import TestClient
+
+    config = _http_config(tmp_path)
+    with patch("mneme.server.get_provider"):
+        server = create_server(config)
+
+    app = server.streamable_http_app()
+    client = TestClient(app)
+
+    # Valid loopback Host → 200
+    response = client.get("/health", headers={"host": "127.0.0.1:8765"})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body.keys()) == {"status", "model_loaded"}, (
+        f"/health leaked extra fields: {set(body.keys()) - {'status', 'model_loaded'}}"
+    )
+    assert body["status"] == "ok"
+
+
+def test_health_endpoint_rejects_non_loopback_host(tmp_path: Path):
+    """/health must reject requests whose Host header isn't loopback.
+
+    DNS-rebind defense — FastMCP's built-in middleware only covers /mcp,
+    so /health must enforce this itself.
+    """
+    from starlette.testclient import TestClient
+
+    config = _http_config(tmp_path)
+    with patch("mneme.server.get_provider"):
+        server = create_server(config)
+
+    app = server.streamable_http_app()
+    client = TestClient(app)
+
+    # Attacker-controlled Host (e.g. from DNS-rebind) → 403
+    response = client.get("/health", headers={"host": "evil.com"})
+    assert response.status_code == 403
