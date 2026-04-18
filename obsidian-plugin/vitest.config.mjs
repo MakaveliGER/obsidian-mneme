@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   test: {
@@ -14,7 +15,9 @@ export default defineConfig({
     alias: {
       // Stub the `obsidian` runtime — vitest runs outside Obsidian. Tests
       // that need real plugin behaviour go into Obsidian itself, not here.
-      obsidian: new URL("./tests/stubs/obsidian.ts", import.meta.url).pathname,
+      // Use fileURLToPath for a proper OS path (Windows-safe: no URL-encoded
+      // spaces, no /D:/ prefix that Vite can't resolve).
+      obsidian: fileURLToPath(new URL("./tests/stubs/obsidian.ts", import.meta.url)),
     },
   },
 });

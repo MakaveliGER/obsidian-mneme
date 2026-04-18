@@ -1,5 +1,6 @@
 import { execFile, spawn, ChildProcess } from "child_process";
 import { promisify } from "util";
+import { requestUrl } from "obsidian";
 import type {
   SearchResult,
   VaultStats,
@@ -59,39 +60,57 @@ export class MnemeClient {
     }
   }
 
-  /** Internal: fetch a REST endpoint on the warm HTTP server. Returns
-   * parsed JSON on success, or throws with `http-down` / `http-error`
-   * so callers can cleanly fall back to CLI. */
+  /** Internal: call a REST endpoint on the warm HTTP server via Obsidian's
+   * `requestUrl()` API.
+   *
+   * **Why not browser `fetch()`:** Obsidian's renderer runs with origin
+   * `app://obsidian.md`. Any POST with `Content-Type: application/json` to
+   * `http://127.0.0.1:8765` is a cross-origin non-simple request — the
+   * browser issues a CORS OPTIONS preflight first. Our Starlette/FastMCP
+   * server doesn't handle OPTIONS on the `/api/v1/*` routes, so the
+   * preflight fails, `fetch()` throws a TypeError, and the entire HTTP
+   * fast-path collapses silently into the CLI fallback. The CLI then
+   * deadlocks on the SQLite write-lock held by the running server.
+   *
+   * `requestUrl()` is Obsidian's Node-level HTTP helper. It bypasses the
+   * browser CORS stack entirely and talks straight to the server — which
+   * is exactly what we want for a plugin contacting its own sidecar on
+   * loopback.
+   *
+   * Returns parsed JSON on 2xx, throws `http-error: <status>` on non-2xx,
+   * `http-down: <msg>` on transport failure so callers can fall back. */
   private async restCall(
     path: string,
     method: "GET" | "POST",
     body?: unknown,
-    timeoutMs: number = 30000,
+    _timeoutMs: number = 30000,
   ): Promise<unknown> {
     if (this.httpPort === null) {
       throw new Error("http-down: no port configured");
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(`http://127.0.0.1:${this.httpPort}${path}`, {
+      const response = await requestUrl({
+        url: `http://127.0.0.1:${this.httpPort}${path}`,
         method,
-        signal: controller.signal,
         headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        throw: false,
       });
-      if (!response.ok) {
-        // 503 = server still warming, 4xx = our mistake, 5xx = other
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(`http-error: ${response.status}`);
       }
-      return await response.json();
+      // Parse manually from .text rather than trusting requestUrl's .json
+      // getter — accessing .json throws on malformed bodies in some
+      // Obsidian builds, and we'd rather surface a clean http-down.
+      try {
+        return JSON.parse(response.text);
+      } catch {
+        throw new Error("http-down: invalid JSON in response");
+      }
     } catch (err) {
-      // AbortError, network error, non-2xx — caller can fall back to CLI.
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith("http-")) throw err;
       throw new Error(`http-down: ${msg}`);
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -129,48 +148,32 @@ export class MnemeClient {
    */
   async probeHealth(port: number = 8765): Promise<"mneme-warm" | "mneme" | "other" | "down"> {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      // Same rationale as restCall(): use Obsidian's Node-level requestUrl
+      // to bypass Electron renderer CORS. Even this GET without a custom
+      // Content-Type header can fail in some Obsidian builds when the
+      // response arrives without CORS headers.
+      const response = await requestUrl({
+        url: `http://127.0.0.1:${port}/health`,
         method: "GET",
-        signal: controller.signal,
+        throw: false,
       });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         return "other";
       }
-      // Cap body read to 4 KB — a squatting local service could stream a
-      // large body in 2s and OOM the plugin renderer. Real /health is ~40
-      // bytes; 4 KB leaves comfortable headroom.
-      const MAX_BODY = 4096;
-      const reader = response.body?.getReader();
-      if (!reader) return "other";
-      let total = 0;
-      const chunks: Uint8Array[] = [];
-      while (total < MAX_BODY) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        chunks.push(value);
-        if (total > MAX_BODY) {
-          reader.cancel();
-          return "other";
-        }
+      // Body-size cap: a squatting local service could stream junk and OOM
+      // the plugin renderer. Real /health is ~40 bytes; 4 KB leaves room
+      // for future fields. requestUrl returns the full body as a string
+      // already, so this is a cheap length check.
+      if (response.text.length > 4096) {
+        return "other";
       }
-      const merged = new Uint8Array(total);
-      let offset = 0;
-      for (const c of chunks) {
-        merged.set(c, offset);
-        offset += c.byteLength;
-      }
-      const text = new TextDecoder().decode(merged);
       let body: Record<string, unknown>;
       try {
-        body = JSON.parse(text);
+        body = JSON.parse(response.text) as Record<string, unknown>;
       } catch {
         return "other";
       }
-      if (body.status === "ok" && "model_loaded" in body) {
+      if (body && body.status === "ok" && "model_loaded" in body) {
         return body.model_loaded === true ? "mneme-warm" : "mneme";
       }
       return "other";

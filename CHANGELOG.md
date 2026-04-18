@@ -180,19 +180,27 @@ tests, sdist/wheel build).
   too aggressive for BGE-M3 cold-load + search on some setups, causing
   the fallback path to report "Command failed" before the model even
   finished loading.
-- **Plugin lazy HTTP discovery** — the root cause of reported "Command
-  failed" errors. The previous design relied on `onStartup` successfully
-  calling `setHttpPort()` exactly once at layout-ready; if that single
-  window was missed (server not yet responsive, race with Obsidian's
-  ribbon registration, etc.), every subsequent search silently fell
-  through to the CLI subprocess — which *also* hangs on the SQLite
-  write-lock when the server is already running, producing a generic
-  "Command failed" with no stderr content. Now every HTTP-capable
-  method calls `ensureHttpPort()` first, which probes `/health` on port
-  8765 and latches if a Mneme server is answering. Plugin self-heals:
-  user can start the server at any time (via Claudian autostart,
-  external `mneme serve`, or the plugin's own autostart) and the
-  next search picks up HTTP without an Obsidian restart.
+- **Plugin lazy HTTP discovery** — removed the dependency on a single
+  `onStartup` success window for `setHttpPort()`. Every HTTP-capable
+  method now probes `/health` on port 8765 before falling back, so the
+  plugin self-heals if the startup race was lost (waitUntilWarm
+  timeout, server still loading, etc.).
+- **Plugin uses Obsidian's `requestUrl()` instead of `fetch()`** — *the*
+  root cause of the "Command failed" reports in live testing. Browser
+  `fetch()` from the Obsidian renderer (origin `app://obsidian.md`) to
+  `http://127.0.0.1:8765` is a cross-origin request. Any POST with
+  `Content-Type: application/json` triggers a CORS preflight that the
+  FastMCP custom_route endpoints don't answer, so `fetch()` throws
+  TypeError → the HTTP fast-path silently collapses → the CLI fallback
+  *also* deadlocks on the SQLite write-lock held by the running server
+  → the user sees "Mneme Fehler: Command failed" with no indication
+  that the actual cause was CORS. `requestUrl()` is Obsidian's
+  Node-level HTTP helper — it bypasses the renderer CORS stack and
+  talks directly to the server. Applied to both `restCall()` and
+  `probeHealth()`.
+- **Plugin CLI timeout bumped to 120s** for search/similar (was 30s) —
+  relevant only in the narrow case where the plugin's HTTP path is
+  unreachable AND no Mneme server is running.
 
 ## [0.3.0] - 2026-04-17
 
