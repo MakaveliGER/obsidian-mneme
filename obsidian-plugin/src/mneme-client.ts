@@ -24,8 +24,18 @@ export class MnemeClient {
     this.mnemePath = path;
   }
 
-  /** Ping the HTTP server's /health endpoint. Returns true if it responds. */
-  async isHttpServerHealthy(port: number = 8765): Promise<boolean> {
+  /** Ping the HTTP server's /health endpoint.
+   *
+   * Returns one of:
+   *   - "mneme"       — it's our server (has `model_loaded` field)
+   *   - "mneme-warm"  — it's our server AND model is loaded
+   *   - "other"       — something else is answering on that port (don't trust)
+   *   - "down"        — no response
+   *
+   * Verifying the response shape (not just 2xx) prevents collision with some
+   * other local service squatting on our port.
+   */
+  async probeHealth(port: number = 8765): Promise<"mneme-warm" | "mneme" | "other" | "down"> {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
@@ -34,10 +44,44 @@ export class MnemeClient {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      return response.ok;
+      if (!response.ok) {
+        return "other";
+      }
+      const body = (await response.json()) as Record<string, unknown>;
+      if (body.status === "ok" && "model_loaded" in body) {
+        return body.model_loaded === true ? "mneme-warm" : "mneme";
+      }
+      return "other";
     } catch {
-      return false;
+      return "down";
     }
+  }
+
+  /** Legacy boolean probe — true if *any* 2xx response. Kept for callers that
+   * don't care about the distinction. Prefer probeHealth() for new code. */
+  async isHttpServerHealthy(port: number = 8765): Promise<boolean> {
+    const state = await this.probeHealth(port);
+    return state === "mneme" || state === "mneme-warm";
+  }
+
+  /** Wait until the HTTP server reports model_loaded:true, or give up after
+   * timeoutMs. Returns true if warm, false on timeout / error. */
+  async waitUntilWarm(
+    port: number = 8765,
+    timeoutMs: number = 30000,
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const state = await this.probeHealth(port);
+      if (state === "mneme-warm") {
+        return true;
+      }
+      if (state === "other") {
+        return false; // port is squatted — don't wait
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return false;
   }
 
   /** Start the Mneme HTTP server as a detached background process.
@@ -53,7 +97,19 @@ export class MnemeClient {
   async startHttpServer(
     port: number = 8765,
     detached: boolean = true
-  ): Promise<"started" | "already-running" | "failed"> {
+  ): Promise<"started" | "already-running" | "failed" | "blocked"> {
+    // mnemePath safety check: data.json lives inside the vault for many users
+    // and can be tampered with via vault-sync. Only allow "mneme" (PATH
+    // resolution) or a path whose basename starts with "mneme" — prevents
+    // an attacker-controlled data.json from silently pointing us at an
+    // arbitrary executable on plugin startup.
+    const basename =
+      this.mnemePath.split(/[\\/]/).pop()?.toLowerCase() ?? "";
+    const basenameStem = basename.replace(/\.exe$/i, "");
+    if (basenameStem !== "mneme") {
+      return "blocked";
+    }
+
     if (await this.isHttpServerHealthy(port)) {
       return "already-running";
     }

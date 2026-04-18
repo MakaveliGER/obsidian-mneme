@@ -37,12 +37,13 @@ export class MnemeSettingsTab extends PluginSettingTab {
           .setPlaceholder("mneme")
           .setValue(this.plugin.settings.mnemePath)
           .onChange(async (value) => {
+            // Plugin-side setting only — there is no mneme_path field in
+            // the backend config (the backend doesn't need to know where
+            // its own CLI binary lives). Earlier versions called
+            // `mneme update-config mneme_path` here which silently errored
+            // on every keystroke.
             this.plugin.settings.mnemePath = value;
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
-              "mneme_path",
-              value
-            );
           })
       );
 

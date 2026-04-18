@@ -95,10 +95,12 @@ export default class MnemePlugin extends Plugin {
           `Mneme: HTTP-Server gestartet (Port ${this.settings.serverPort})`,
           3000,
         );
-        // Wait briefly for server boot (handshake + tool registration are fast;
-        // model load is lazy on first tool call). 2s is enough for /health to
-        // respond; model pre-warm happens on first request.
-        await new Promise((r) => setTimeout(r, 2000));
+      } else if (status === "blocked") {
+        new Notice(
+          "Mneme: Pfad-Sicherheitsprüfung fehlgeschlagen. Der konfigurierte Pfad endet nicht auf 'mneme' oder 'mneme.exe'. Bearbeite die Einstellungen.",
+          12000,
+        );
+        return;
       } else {
         new Notice(
           "Mneme: Server konnte nicht gestartet werden. Prüfe den Pfad in den Settings.",
@@ -106,9 +108,24 @@ export default class MnemePlugin extends Plugin {
         );
         return;
       }
+
+      // Wait until the model is actually loaded (eager-init completes).
+      // Running reindex before model_loaded=true would block on the cold
+      // import path and is confusing — skip instead if it doesn't warm up.
+      const warm = await this.client.waitUntilWarm(
+        this.settings.serverPort,
+        60000,
+      );
+      if (!warm) {
+        new Notice(
+          "Mneme: Server-Warmup dauert ungewöhnlich lang. Reindex wird übersprungen — nächster Start sollte schneller sein (warme Caches).",
+          8000,
+        );
+        return;
+      }
     }
 
-    // Reindex on start (catches offline changes + sync)
+    // Reindex on start (catches offline changes + sync) — only after warmup.
     if (this.settings.reindexOnStart) {
       try {
         const result = await this.client.reindex(false);
@@ -120,7 +137,7 @@ export default class MnemePlugin extends Plugin {
         }
         this.statusBar?.refresh();
       } catch {
-        // Silent — server might still be initializing
+        // Silent — server might have died between warmup and reindex
       }
     }
   }
