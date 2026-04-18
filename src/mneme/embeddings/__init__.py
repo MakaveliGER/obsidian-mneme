@@ -6,10 +6,27 @@ def get_provider(config) -> EmbeddingProvider:
 
     config needs .provider (str) and .model (str) attributes.
     For the ONNX provider, config also needs .backend (str).
+
+    Providers
+    ---------
+    - ``"sentence-transformers"`` (default): classic path via
+      ``sentence_transformers.SentenceTransformer``. Pulls in sklearn/scipy.
+    - ``"raw-transformers"``: lean alternative built on ``transformers`` +
+      ``torch`` only. Same BGE-M3 dense embeddings, no sklearn/scipy.
+      Switch via ``mneme update-config embedding.provider raw-transformers``.
+    - ``"onnx"``: experimental ONNX Runtime path (CPU / DirectML / CUDA / ROCm).
     """
     if config.provider == "sentence-transformers":
         from mneme.embeddings.sentence_transformers import SentenceTransformersProvider
         return SentenceTransformersProvider(
+            model_name=config.model,
+            device=getattr(config, "device", "auto"),
+            dtype=getattr(config, "dtype", "bfloat16"),
+            batch_size=getattr(config, "batch_size", 32),
+        )
+    if config.provider == "raw-transformers":
+        from mneme.embeddings.raw_transformers import RawBgeM3Provider
+        return RawBgeM3Provider(
             model_name=config.model,
             device=getattr(config, "device", "auto"),
             dtype=getattr(config, "dtype", "bfloat16"),

@@ -6,6 +6,18 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- New `raw-transformers` embedding provider (`mneme.embeddings.raw_transformers.RawBgeM3Provider`)
+  built directly on `transformers.AutoModel` + `torch`. Produces the same
+  BGE-M3 dense embeddings (CLS pooling, L2-normalized, 1024-dim) as the
+  `sentence-transformers` provider but without pulling in
+  `sklearn`/`scipy`. Opt in via
+  `mneme update-config embedding.provider raw-transformers`. Motivated by
+  slow Windows `LoadLibrary` of `scipy.special` in Electron-spawned
+  subprocess contexts. Default provider unchanged.
+- `scripts/verify_provider_parity.py` — dev-only byte-parity check
+  (float32, CPU) between the two providers.
+
 ## [0.3.0] - 2026-04-17
 
 PyPI debut under the `obsidian-mneme` package name (the short `mneme` slug

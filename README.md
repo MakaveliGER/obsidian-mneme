@@ -58,6 +58,30 @@ Dann `mneme update-config embedding.device cuda` (bzw. `auto`).
 
 Die `mneme[onnx]` / `[cuda]` / `[directml]`-Extras installieren den experimentellen **ONNX-Pfad** (aktuell nicht empfohlen, siehe `docs/gpu-backend-evaluation.md`).
 
+### Lean-install option (`raw-transformers`)
+
+Alternative zum `sentence-transformers`-Provider: der **`raw-transformers`**-Provider nutzt direkt `transformers.AutoModel` + `torch` und braucht **kein sklearn / scipy**. Gleiche BGE-M3-Dense-Embeddings (1024-dim, CLS-Pooling, L2-normalisiert), nur ohne den Import-Overhead.
+
+Nutzen, wenn:
+- **Cold-Start** matters (sentence-transformers 5.x zieht `sklearn → scipy.special`, was auf Windows aus Electron-Subprocesses heraus langsam lädt)
+- **kleinerer sdist / venv** gewünscht (sklearn + scipy = ~70 MB)
+- du **Reranking/Sparse/ColBERT nicht nutzt** (Mneme's Reranking ist default-off — also: praktisch immer OK)
+
+Umschalten:
+
+```bash
+mneme update-config embedding.provider raw-transformers
+```
+
+Oder direkt in `config.toml`:
+
+```toml
+[embedding]
+provider = "raw-transformers"
+```
+
+`sentence-transformers` bleibt Default und eingebaut — kein Breaking Change.
+
 ---
 
 ## Usage mit Claude Code / Claudian
@@ -147,7 +171,7 @@ Plugin-Submission an den Obsidian Community Store steht für eine spätere Versi
 path = "/path/to/vault"
 
 [embedding]
-provider = "sentence-transformers"
+provider = "sentence-transformers"   # or "raw-transformers" (lean, no sklearn/scipy) / "onnx"
 model = "BAAI/bge-m3"
 
 [search]
