@@ -44,10 +44,31 @@ def setup():
         show_default=True,
     )
 
+    # Transport
+    click.echo("\nMCP transport:")
+    click.echo(
+        "  stdio            — for Claude Code (CLI hook) and direct stdio "
+        "clients.\n"
+        "  streamable-http  — long-running server on 127.0.0.1:8765. "
+        "Recommended\n"
+        "                     for Claudian / Claude Desktop. The Obsidian "
+        "plugin can\n"
+        "                     auto-start it at Obsidian launch. Vault warm "
+        "across\n"
+        "                     multiple queries; no per-session cold-start."
+    )
+    transport = click.prompt(
+        "Transport",
+        type=click.Choice(["stdio", "streamable-http"]),
+        default="streamable-http",
+        show_default=True,
+    )
+
     # Create config
     config = MnemeConfig(
         vault=VaultConfig(path=vault_path),
         embedding={"provider": "sentence-transformers", "model": model},
+        server={"transport": transport, "host": "127.0.0.1", "port": 8765},
     )
     saved_path = save_config(config)
     click.echo(f"\nConfig saved to: {saved_path}")
@@ -68,7 +89,23 @@ def setup():
 
     click.echo(f"\nDone! Indexed {result.indexed} notes in {result.duration_seconds:.1f}s")
     click.echo(f"Database: {config.db_path}")
-    click.echo(f"\nStart the MCP server with: mneme serve")
+    if transport == "streamable-http":
+        click.echo(
+            "\nStart the MCP server with:"
+            "\n  mneme serve"
+            "\n"
+            "\nThen point your MCP client at http://127.0.0.1:8765/mcp. "
+            "The Obsidian\nplugin (if installed) can also auto-start the "
+            "server at Obsidian launch\nvia its 'autoStartServer' setting."
+        )
+    else:
+        click.echo(
+            "\nStart the MCP server with:"
+            "\n  mneme serve"
+            "\n"
+            "\nConfigure your MCP client (e.g. Claude Code .claude/mcp.json) "
+            "to spawn\n`mneme serve` as a stdio subprocess."
+        )
 
 
 @main.command(name="init")

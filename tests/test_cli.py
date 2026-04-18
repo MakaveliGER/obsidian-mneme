@@ -86,10 +86,11 @@ class TestSetup:
             patch("mneme.config.config_path", return_value=config_file),
         ):
             runner = CliRunner()
+            # Input lines: vault path, embedding model, transport choice
             result = runner.invoke(
                 main,
                 ["setup"],
-                input=f"{vault}\nBAI/bge-m3\n",
+                input=f"{vault}\nBAI/bge-m3\nstreamable-http\n",
             )
 
         assert result.exit_code == 0, result.output
