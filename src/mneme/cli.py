@@ -84,8 +84,29 @@ def setup():
     provider = get_provider(config.embedding)
     store = Store(config.db_path, provider.dimension())
     indexer = Indexer(store, provider, config)
-    result = indexer.index_vault(full=True)
-    store.close()
+
+    # Progress bar — matters on CPU-only installs where a 200-note first
+    # index takes 15-25 min. click.progressbar renders an inline bar with
+    # ETA; the callback pattern here lets the Indexer stay UI-agnostic.
+    progress_state: dict = {"bar": None}
+
+    def _progress(current: int, total: int, path: str) -> None:
+        bar = progress_state["bar"]
+        if bar is None:
+            bar = click.progressbar(length=total, label="Indexing")
+            bar.__enter__()
+            progress_state["bar"] = bar
+        # click's progressbar wants absolute position via update(n),
+        # which is the delta since last update; we pass 1 because we
+        # call the callback once per file.
+        bar.update(1)
+
+    try:
+        result = indexer.index_vault(full=True, progress_callback=_progress)
+    finally:
+        if progress_state["bar"] is not None:
+            progress_state["bar"].__exit__(None, None, None)
+        store.close()
 
     click.echo(f"\nDone! Indexed {result.indexed} notes in {result.duration_seconds:.1f}s")
     click.echo(f"Database: {config.db_path}")
@@ -298,10 +319,29 @@ def reindex(full: bool, as_json: bool):
     # legacy DB can still be opened, then bump the schema version at the end.
     store = Store(config.db_path, provider.dimension(), skip_version_check=full)
     indexer = Indexer(store, provider, config)
-    result = indexer.index_vault(full=full)
-    if full:
-        store.set_schema_version(CURRENT_SCHEMA_VERSION)
-    store.close()
+
+    # Progress bar for interactive runs; JSON mode stays silent so callers
+    # parsing stdout don't get partial bytes.
+    progress_cb = None
+    progress_state: dict = {"bar": None}
+    if not as_json:
+        def _progress(current: int, total: int, path: str) -> None:
+            bar = progress_state["bar"]
+            if bar is None:
+                bar = click.progressbar(length=total, label="Indexing")
+                bar.__enter__()
+                progress_state["bar"] = bar
+            bar.update(1)
+        progress_cb = _progress
+
+    try:
+        result = indexer.index_vault(full=full, progress_callback=progress_cb)
+    finally:
+        if progress_state["bar"] is not None:
+            progress_state["bar"].__exit__(None, None, None)
+        if full:
+            store.set_schema_version(CURRENT_SCHEMA_VERSION)
+        store.close()
 
     if as_json:
         click.echo(json.dumps({

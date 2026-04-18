@@ -39,12 +39,18 @@ class Indexer:
     # Public API
     # ------------------------------------------------------------------
 
-    def index_vault(self, full: bool = False) -> IndexResult:
+    def index_vault(
+        self, full: bool = False, progress_callback=None
+    ) -> IndexResult:
         """Scan the vault and index all matching notes.
 
         Args:
             full: When True, re-index every note regardless of hash.
                   When False (incremental), skip unchanged notes.
+            progress_callback: Optional callable ``(current, total, path)``
+                invoked after each file is processed. Used by the CLI to
+                render a progress bar — matters on first-run full reindex
+                which can take 15-25 min on CPU.
 
         Returns:
             IndexResult with counts and elapsed time.
@@ -84,12 +90,15 @@ class Indexer:
         if not full:
             hash_cache = self._store.get_hash_cache()
 
-        for file_path in unique_files:
+        total = len(unique_files)
+        for i, file_path in enumerate(unique_files, start=1):
             try:
                 parsed = parse_note(file_path, vault_root)
             except Exception as e:
                 logger.warning("Skipping %s: %s", file_path, e)
                 errors += 1
+                if progress_callback is not None:
+                    progress_callback(i, total, str(file_path))
                 continue
 
             vault_paths.add(parsed.path)
@@ -99,11 +108,15 @@ class Indexer:
                 if cached and cached[1] == parsed.content_hash:
                     skipped += 1
                     notes_for_link_resolution.append((cached[0], cached[2]))
+                    if progress_callback is not None:
+                        progress_callback(i, total, parsed.path)
                     continue
 
             note_id = self._index_parsed(parsed)
             notes_for_link_resolution.append((note_id, parsed.wikilinks))
             indexed += 1
+            if progress_callback is not None:
+                progress_callback(i, total, parsed.path)
 
         # --- Remove orphaned notes ---
         db_paths = set(self._store.get_all_note_paths())
