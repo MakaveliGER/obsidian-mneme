@@ -289,6 +289,47 @@ export class MnemeClient {
     return this.serverProcess !== null && !this.serverProcess.killed;
   }
 
+  /** Silence noisy library output that the CLI's heavy imports produce —
+   * tqdm progress bars, HuggingFace Hub network spinners, transformers
+   * deprecation warnings, ROCm UserWarnings. Without this, the fallback
+   * spawn path pollutes stderr with 2-3 KB of weights-loading bars that
+   * then get surfaced to the user as "Mneme Fehler" when parsing fails or
+   * the process exits non-zero. Applied on every CLI spawn. */
+  private cliEnv(): NodeJS.ProcessEnv {
+    return {
+      ...process.env,
+      PYTHONIOENCODING: "utf-8",
+      TQDM_DISABLE: "1",
+      HF_HUB_DISABLE_PROGRESS_BARS: "1",
+      TRANSFORMERS_VERBOSITY: "error",
+      PYTHONWARNINGS: "ignore",
+    };
+  }
+
+  /** Strip tqdm progress bars and deprecation / user warnings from stderr
+   * before surfacing it as an error message. Keeps the last few meaningful
+   * lines so the user sees the actual failure reason, not "Loading
+   * weights: 0%|" × 40. */
+  private sanitizeStderr(stderr: string): string {
+    if (!stderr) return "";
+    const cleaned = stderr
+      .split(/\r\n|\r|\n/)
+      // tqdm bars: "28%|...| 109/391 [00:00<?, ?it/s]"
+      .filter((l) => !/\d+%\|.*\|.*\d+\/\d+.*\[/.test(l))
+      // Python warning lines — module path + line + WarningClass
+      .filter((l) => !/\.py:\d+:\s+(User|Deprecation|Future)Warning/.test(l))
+      // Bare `warnings.warn(...)` continuation lines
+      .filter((l) => !/^\s*warnings\.warn\(/.test(l))
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (cleaned.length === 0) {
+      // Everything was noise — give the raw tail so the user has *something*.
+      return stderr.slice(-400).trim();
+    }
+    // Last 3 meaningful lines — usually the actual traceback / error.
+    return cleaned.slice(-3).join("\n");
+  }
+
   /** Run a mneme CLI command with argument array and return parsed JSON output */
   private async runArgs(
     args: string[],
@@ -297,7 +338,7 @@ export class MnemeClient {
     try {
       const { stdout } = await execFileAsync(this.mnemePath, args, {
         timeout: timeoutMs,
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        env: this.cliEnv(),
       });
       return JSON.parse(stdout.trim());
     } catch (err: unknown) {
@@ -308,11 +349,11 @@ export class MnemeClient {
       };
       if (error.code === "ENOENT") {
         throw new Error(
-          `Mneme nicht gefunden: "${this.mnemePath}". Bitte installiere Mneme (pip install mneme) oder setze den korrekten Pfad in den Settings.`
+          `Mneme nicht gefunden: "${this.mnemePath}". Bitte installiere Mneme (pip install obsidian-mneme) oder setze den korrekten Pfad in den Settings.`
         );
       }
-      const stderr = error.stderr || error.message || "Unknown error";
-      throw new Error(`Mneme Fehler: ${stderr}`);
+      const stderr = this.sanitizeStderr(error.stderr || error.message || "Unknown error");
+      throw new Error(`Mneme Fehler: ${stderr || "Unknown error"}`);
     }
   }
 
@@ -324,7 +365,7 @@ export class MnemeClient {
     try {
       const { stdout } = await execFileAsync(this.mnemePath, args, {
         timeout: timeoutMs,
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        env: this.cliEnv(),
       });
       return stdout.trim();
     } catch (err: unknown) {
@@ -338,7 +379,8 @@ export class MnemeClient {
           `Mneme nicht gefunden: "${this.mnemePath}".`
         );
       }
-      throw new Error(`Mneme Fehler: ${error.stderr || error.message}`);
+      const stderr = this.sanitizeStderr(error.stderr || error.message || "");
+      throw new Error(`Mneme Fehler: ${stderr || "Unknown error"}`);
     }
   }
 

@@ -211,6 +211,27 @@ class SearchEngine:
         import numpy as np
         avg_embedding = np.mean(embeddings, axis=0).tolist()
 
-        candidates = self.store.vector_search(avg_embedding, top_k=top_k * 3)
-        filtered = [r for r in candidates if r.note_path != path]
-        return filtered[:top_k]
+        # Over-retrieve enough to survive filtering out *this* note's own
+        # chunks AND to have headroom after per-note deduplication. A note
+        # with N chunks can fill up to N slots in the vector search before
+        # the path filter runs; after filtering, multiple chunks from the
+        # same neighbour collapse to one entry. Without deduplication,
+        # callers (Gardener weak_links, MCP get_similar tool) got the
+        # same note listed N times with different chunk scores.
+        n_own_chunks = len(embeddings)
+        candidates = self.store.vector_search(
+            avg_embedding, top_k=n_own_chunks + (top_k * 3) + 10
+        )
+
+        # Deduplicate by note_path, keeping the highest-scoring chunk per
+        # note. Results are sorted by score descending (best-first) before
+        # the top_k slice.
+        best_by_path: dict[str, SearchResult] = {}
+        for r in candidates:
+            if r.note_path == path:
+                continue
+            existing = best_by_path.get(r.note_path)
+            if existing is None or r.score > existing.score:
+                best_by_path[r.note_path] = r
+        deduped = sorted(best_by_path.values(), key=lambda r: r.score, reverse=True)
+        return deduped[:top_k]

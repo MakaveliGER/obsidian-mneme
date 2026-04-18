@@ -200,3 +200,70 @@ def test_get_similar_empty_when_no_embeddings():
     )
     assert engine.get_similar("nonexistent.md") == []
     store.vector_search.assert_not_called()
+
+
+def test_get_similar_over_retrieves_beyond_own_chunks():
+    """Regression: large notes must not empty the result list.
+
+    A note with many chunks can fill up to N slots in the vector-search top.
+    The over-retrieval factor must take n_own_chunks into account so the
+    path filter doesn't leave filtered[] empty."""
+    own_path = "notes/big_note.md"
+    # 20 own chunks — previously top_k * 3 = 9 or 15 candidates would all
+    # be own chunks, leaving zero after path-filter.
+    own_embeddings = [[1.0, 0.0]] * 20
+    store = MagicMock()
+    store.get_all_chunk_embeddings_for_note.return_value = own_embeddings
+
+    # Simulate vector_search returning own chunks first, then one other note.
+    own_hits = [make_result(chunk_id=i, note_path=own_path) for i in range(20)]
+    other_hits = [make_result(chunk_id=100, note_path="notes/other.md", score=0.7)]
+    store.vector_search.return_value = own_hits + other_hits
+
+    engine = SearchEngine(
+        store=store,
+        embedding_provider=MagicMock(),
+        config=MagicMock(),
+    )
+    results = engine.get_similar(own_path, top_k=3)
+
+    # Verify over-retrieval factor scales with n_own_chunks.
+    call_kwargs = store.vector_search.call_args.kwargs
+    assert call_kwargs["top_k"] > 20, (
+        "over-retrieval must exceed the number of own chunks; "
+        f"got top_k={call_kwargs['top_k']}"
+    )
+    assert len(results) == 1
+    assert results[0].note_path == "notes/other.md"
+
+
+def test_get_similar_deduplicates_by_note_path():
+    """get_similar must collapse multiple chunks of the same note into one
+    entry, keeping the highest-scoring chunk. Previously callers like
+    Gardener.find_weakly_linked() got the same note N times."""
+    own_path = "notes/query.md"
+    store = MagicMock()
+    store.get_all_chunk_embeddings_for_note.return_value = [[1.0, 0.0]]
+
+    # Three chunks from the same neighbour note, plus one from a different
+    # neighbour. Dedup must keep the highest score per note.
+    store.vector_search.return_value = [
+        make_result(chunk_id=1, note_path="notes/alpha.md", score=0.9),
+        make_result(chunk_id=2, note_path="notes/alpha.md", score=0.7),
+        make_result(chunk_id=3, note_path="notes/alpha.md", score=0.5),
+        make_result(chunk_id=4, note_path="notes/beta.md", score=0.6),
+    ]
+
+    engine = SearchEngine(
+        store=store,
+        embedding_provider=MagicMock(),
+        config=MagicMock(),
+    )
+    results = engine.get_similar(own_path, top_k=10)
+
+    paths = [r.note_path for r in results]
+    assert paths == ["notes/alpha.md", "notes/beta.md"], (
+        f"expected deduplicated, score-sorted paths; got {paths}"
+    )
+    alpha = next(r for r in results if r.note_path == "notes/alpha.md")
+    assert alpha.score == 0.9, "must keep highest-scoring chunk per note"

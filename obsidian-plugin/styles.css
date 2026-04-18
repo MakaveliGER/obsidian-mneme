@@ -9,6 +9,18 @@
   --mneme-score-low: #ef4444;
 }
 
+/* ── Ribbon Icon — gold to match the banner wordmark ──────────── */
+
+/* Obsidian ribbon buttons render the addIcon SVG with
+   fill="currentColor". Setting `color` on the button (or the svg-icon
+   wrapper) colours the muse silhouette. Selectors cover both the
+   ribbon position and the command-palette hint icon. */
+.side-dock-ribbon-action[aria-label^="Mneme"],
+.side-dock-ribbon-action[aria-label^="Mneme"] .svg-icon,
+body [data-icon="mneme"] {
+  color: var(--mneme-gold);
+}
+
 /* ── Search View ─────────────────────────────── */
 
 .mneme-search-container {

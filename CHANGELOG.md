@@ -140,6 +140,36 @@ tests, sdist/wheel build).
 - CLI `serve` refuses non-loopback bind unless `MNEME_ALLOW_NONLOOPBACK=1`
   is set. Pre-bind port-collision probe so errors are clear, not a stacktrace.
 
+### Fixed (Live-Test Feedback, Round 1)
+
+- **`get_similar` empty for large notes** (critical). The over-retrieval
+  factor `top_k * 3` was too small for notes with many chunks. A note with
+  N chunks could fill all `top_k * 3` slots in the vector search before the
+  path filter ran, leaving `filtered[]` empty. Fix: over-retrieval now
+  scales with `n_own_chunks + (top_k * 3) + 10` so neighbour candidates
+  survive the path filter. Particularly affected project-hub MOCs and
+  large Daily-Note collections.
+- **`get_similar` duplicated neighbours by chunk** (minor). The method
+  returned per-chunk results — a neighbour note with N relevant chunks
+  appeared N times in the output. Now deduplicates by `note_path`, keeping
+  the highest-scoring chunk per neighbour. Fixes duplicate entries in
+  Gardener `weak_links` suggestions (same note listed 3× with different
+  chunk scores) and in the MCP `get_similar` tool.
+- **Plugin CLI-fallback noise leak**. When the HTTP fast-path was
+  unreachable and the plugin fell back to `execFile("mneme", …)`, tqdm
+  progress bars, HuggingFace Hub spinners, ROCm `UserWarning`s, and
+  `torch_dtype` deprecation warnings leaked into stderr and were
+  surfaced verbatim as the error message. CLI spawns now set
+  `TQDM_DISABLE=1`, `HF_HUB_DISABLE_PROGRESS_BARS=1`,
+  `TRANSFORMERS_VERBOSITY=error`, `PYTHONWARNINGS=ignore`. Error stderr
+  is sanitized before display: progress bars and warning lines are
+  filtered out, last 3 meaningful lines shown.
+- **Ribbon icon color**. Plugin ribbon icon now matches the banner
+  wordmark (gold, `#C9A84C`) via CSS targeting
+  `.side-dock-ribbon-action[aria-label^="Mneme"]` and
+  `[data-icon="mneme"]`. SVG stays `currentColor`-driven so theme
+  overrides still work.
+
 ## [0.3.0] - 2026-04-17
 
 *Internal milestone — never published. Superseded by 0.3.1, which is the
