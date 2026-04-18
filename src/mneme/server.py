@@ -8,6 +8,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
+from typing import TypedDict
 
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
@@ -33,6 +34,24 @@ logger = logging.getLogger(__name__)
 
 
 from mneme.paths import normalize_vault_path
+
+
+class ServerState(TypedDict, total=False):
+    """Shared state held in the create_server closure.
+
+    All keys optional: populated incrementally by _initialize(). ``init_error``
+    is set if init fails. Still a dict at runtime — the test suite inspects
+    the closure cell via ``isinstance(val, dict)`` which keeps working with
+    TypedDict (it's a dict subtype at runtime).
+    """
+    store: Store
+    provider: object  # EmbeddingProvider, but avoid circular import
+    indexer: Indexer
+    search: SearchEngine
+    gardener: VaultGardener
+    config: MnemeConfig
+    watcher: VaultWatcher
+    init_error: str
 
 
 def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False) -> FastMCP:
@@ -69,7 +88,7 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
     # thread has stdout redirected via _silenced_stdout, no other MCP message
     # is in flight — safe. A background thread would redirect stdout process-
     # wide and break concurrent MCP responses.
-    state: dict = {}
+    state: ServerState = {}
     import threading as _threading
     _init_done = _threading.Event()
     _init_lock = _threading.Lock()
