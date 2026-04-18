@@ -1,398 +1,277 @@
 [
   {
-    "question": "Was ist Andrés KI-Strategie für Hohenstein?",
-    "ground_truth_answer": "KI-Weiterbildungszentrum der TIC-Branche aufbauen, Use Cases identifizieren, Fördermittel nutzen",
-    "expected_contexts": ["02 Projekte/Corporate/KI-Strategie Hohenstein/KI-Strategie Hohenstein"],
-    "tags": ["strategie", "hohenstein"]
-  },
-  {
-    "question": "Wie funktioniert Mneme und wozu dient es?",
-    "ground_truth_answer": "Lokaler MCP-Server für semantische Vault-Suche, Hybrid Search mit RRF, Headless RAG",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Mneme"],
-    "tags": ["mneme", "mcp"]
-  },
-  {
-    "question": "Welche Trading-Strategie verfolgt André?",
-    "ground_truth_answer": "KI-gestütztes Trading-System, Marktanalyse, regelbasiertes System",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Trading Signal Tracker/Trading Signal Tracker"],
-    "tags": ["trading"]
-  },
-  {
-    "question": "Was sind die nächsten Schritte im Mneme-Projekt?",
-    "ground_truth_answer": "Evaluierung, ONNX Provider, PyPI-Publish, Obsidian Plugin",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Mneme"],
-    "tags": ["mneme", "roadmap"]
-  },
-  {
-    "question": "Welche Rolle übernimmt André ab Mai 2026?",
-    "ground_truth_answer": "Leiter Berufliche Weiterbildungsprogramme bei Hohenstein, KI-Weiterbildungszentrum der TIC-Branche",
-    "expected_contexts": ["00 Kontext/Über mich"],
-    "tags": ["karriere", "hohenstein"]
-  },
-  {
-    "question": "Welche Technologien und Tools nutzt André?",
-    "ground_truth_answer": "Python, Claude, Gemini, MCP, Obsidian, Web-Entwicklung, SEO",
-    "expected_contexts": ["00 Kontext/Über mich"],
-    "tags": ["skills", "tools"]
-  },
-  {
-    "question": "Was ist Andrés Hintergrund im Bereich Web3?",
-    "ground_truth_answer": "Web3-Berater, Dozent bei Academy for Disruptive Minds, technische Einschätzung von Web3-Projekten",
-    "expected_contexts": ["00 Kontext/Über mich", "03 Bereiche/Freelance/Web3, Blockchain & Consulting/Web3, Blockchain & Consulting"],
-    "tags": ["web3", "blockchain"]
-  },
-  {
-    "question": "Wie beschreibt André seine Stärken als KI-Consultant?",
-    "ground_truth_answer": "Brücke zwischen Management und Tech, strategisches Fundament + technische Umsetzungskompetenz",
-    "expected_contexts": ["00 Kontext/Über mich", "00 Kontext/Angebot"],
-    "tags": ["consulting", "ki"]
-  },
-  {
-    "question": "Was bietet André als KI-Dienstleistung an?",
-    "ground_truth_answer": "KI-Consulting, Strategische Beratung, Tool-Entwicklung, Prozessautomatisierung",
-    "expected_contexts": ["00 Kontext/Angebot"],
-    "tags": ["angebot", "freelance"]
-  },
-  {
-    "question": "Was ist Andrés Branding und Positionierung?",
-    "ground_truth_answer": "Brücke zwischen Management und disruptiven Technologien, Ergebnisse statt Berater-Blabla",
-    "expected_contexts": ["00 Kontext/Branding"],
-    "tags": ["branding"]
-  },
-  {
-    "question": "Wie funktioniert die RAG Tech-Stack Referenz?",
-    "ground_truth_answer": "Vector DBs, Frameworks, RAG-Patterns, Hybrid-Orchestrierung",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/04 RAG Tech-Stack Referenz"],
-    "tags": ["rag", "techstack"]
-  },
-  {
-    "question": "Was ist der RAG Implementierung Stufenplan?",
-    "ground_truth_answer": "Retrieval Sidecar Pattern, MCP-Server-Vergleich, Embedding-Modelle, Crosley-Architektur",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/05 RAG Implementierung Stufenplan"],
-    "tags": ["rag", "stufenplan"]
-  },
-  {
-    "question": "Wie evaluiert man die Qualität eines RAG-Systems?",
-    "ground_truth_answer": "RAGAS, DeepEval, Faithfulness, Context Precision, Context Recall, Ground-Truth-Paare",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/07 RAG Evaluierung & Benchmarking"],
-    "tags": ["evaluierung", "ragas"]
-  },
-  {
-    "question": "Was wurde bei der Mneme-Recherche entschieden?",
-    "ground_truth_answer": "Eigenentwicklung statt Fork, Headless RAG, SQLite + sqlite-vec, BGE-M3, FastMCP",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Mneme Recherche"],
-    "tags": ["mneme", "recherche"]
-  },
-  {
-    "question": "Wie ist Andrés Obsidian-Vault strukturiert?",
-    "ground_truth_answer": "PARA-Struktur: Projekte, Bereiche, Ressourcen, Archiv. Kontext-Ordner, Inbox, Daily Notes",
-    "expected_contexts": ["00 Kontext/Über mich"],
-    "tags": ["vault", "para"]
-  },
-  {
-    "question": "Was ist das LocalVox Projekt?",
-    "ground_truth_answer": "Eigenprojekt von André",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/LocalVox/LocalVox"],
-    "tags": ["localvox", "projekt"]
-  },
-  {
-    "question": "Was ist das Argus Projekt?",
-    "ground_truth_answer": "Eigenprojekt von André",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Argus/Argus"],
-    "tags": ["argus", "projekt"]
-  },
-  {
-    "question": "Was ist die HeinzAI Analyse?",
-    "ground_truth_answer": "Enterprise KM, Wissensmanagement, Produktanalyse",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/00 HeinzAI Analyse & DIY Wissensmanagement"],
-    "tags": ["heinzai", "analyse"]
-  },
-  {
-    "question": "Wie arbeitet André mit KI-Newslettern?",
-    "ground_truth_answer": "Automatisierte Digest-Verarbeitung, Newsletter-Processing",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/KI-Newsletter Digest Automatisierung"],
-    "tags": ["newsletter", "automatisierung"]
-  },
-  {
-    "question": "Was ist die SANIMA Website?",
-    "ground_truth_answer": "Freelance-Projekt, Website-Entwicklung",
-    "expected_contexts": ["02 Projekte/Freelance/SANIMA Website/SANIMA Website"],
-    "tags": ["sanima", "website"]
-  },
-  {
-    "question": "Was ist der Projekt-Workflow und wann gilt er?",
-    "ground_truth_answer": "Standardisierter 7-Phasen-Prozess: Brainstorming, Design Spec, Plan, Setup, Ausführung, Review, Vault-Sync. Gilt bei Änderungen > 15 Min oder Architektur-Auswirkung.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Workflows/Projekt-Workflow"],
-    "tags": ["workflow", "superpowers"]
-  },
-  {
-    "question": "Wie läuft die Session-Start-Routine ab?",
-    "ground_truth_answer": "Inbox scannen, Task-Sync, Index-Sync, Daily Notes lesen, Newsletter-Briefing — 5 Schritte die bei jedem Session-Start durchlaufen werden.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Workflows/Session-Routinen"],
-    "tags": ["workflow", "session", "routine"]
-  },
-  {
-    "question": "Was passiert bei 'wrap up' in einer Session?",
-    "ground_truth_answer": "Pre-Clear-Routine: Daily Note anlegen/öffnen, neuen Session-Abschnitt mit Thema anhängen, kurze Bullet-Liste (Logbuch-Stil, max 5-8 Bullets), dann kann André /clear machen.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Workflows/Session-Routinen"],
-    "tags": ["workflow", "session", "pre-clear"]
-  },
-  {
-    "question": "Wie funktioniert der Video-Analyse Workflow?",
-    "ground_truth_answer": "Standardisierter Prozess zur vollständigen Videoauswertung. Unterstützt YouTube-URLs (via YouTube Research Toolkit/Video-Lens) und lokale Dateien (via Whisper). Ziel: Das Video wird nach der Analyse überflüssig.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Workflows/Video-Analyse Workflow"],
-    "tags": ["workflow", "video", "analyse"]
-  },
-  {
-    "question": "Was ist Mostovi und welches Problem löst es?",
-    "ground_truth_answer": "Android-App für Live-Übersetzungen Deutsch-Bosnisch mit Offline-First-Architektur. Löst das Problem, dass Google Translate bei Bosnisch unzuverlässig ist (fehlerhafte Kasus, Verb-Aspekte). Tech: Kotlin/Jetpack Compose, whisper.cpp, NLLB-200, Piper TTS.",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Mostovi"],
-    "tags": ["mostovi", "android", "übersetzung"]
-  },
-  {
-    "question": "Was macht VoiceScribe und wie gut funktioniert es?",
-    "ground_truth_answer": "Windows-Desktop-App für lokale Sprachverarbeitung mit Speaker Diarization, Transkription und strukturiertem Export. Dual-Engine (ONNX INT8 + FP32 PyTorch), 96% Benchmark-Score, 4 Exportformate (Markdown, Word, Obsidian, PDF).",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/VoiceScribe"],
-    "tags": ["voicescribe", "speech-to-text", "diarization"]
-  },
-  {
-    "question": "Wie funktioniert LocalVox und was ist der Stilassistent?",
-    "ground_truth_answer": "Windows-Diktierlösung mit GPU-lokalem Hotkey-basiertem Diktat. Stilassistent nutzt Qwen3.5-4B Q5_K_M als lokales LLM mit 4 Modi (Original/Formell/Deeskaliert/Emoji), läuft via llama-server.exe mit Vulkan.",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/LocalVox/LocalVox"],
-    "tags": ["localvox", "diktat", "stilassistent"]
-  },
-  {
-    "question": "Warum wurde das Argus-Projekt pausiert?",
-    "ground_truth_answer": "Strategische Neubewertung: Argus ist ohne starkes lokales LLM eher eine Spielerei. Cloud-LLMs funktionieren, aber ein Always-On-Assistent braucht ein leistungsfähiges lokales Modell. Wartet auf neue Modellgeneration.",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Argus/Argus"],
-    "tags": ["argus", "pausiert", "voice-ai"]
-  },
-  {
-    "question": "Welche Skills hat Argus und wie funktioniert die Wake-Word-Erkennung?",
-    "ground_truth_answer": "Skills: execute_python, read_webpage, see_screen. Wake Word 'Argus' via OpenWakeWord mit Custom Verifier (30+10 Mikro-Samples, sklearn-Layer). WakeGateProcessor steuert IDLE/ACTIVE State-Machine, Persistent Pipeline lebt bis Shutdown.",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Argus/Argus"],
-    "tags": ["argus", "skills", "wake-word"]
-  },
-  {
-    "question": "Was ist die TIC-Branchensimulation mit Mesa?",
-    "ground_truth_answer": "ABM-Simulation der KI-Transformation in der TIC-Branche mit Mesa (Python). Szenario-Explorer für KI-Adoptionsgeschwindigkeiten. Vorgänger MiroFish scheiterte weil es ein Social-Media-Meinungssimulator war, nicht geeignet für B2B-Entscheidungen.",
-    "expected_contexts": ["02 Projekte/Corporate/TIC-Branchensimulation Mesa"],
-    "tags": ["mesa", "simulation", "hohenstein"]
-  },
-  {
-    "question": "Wer ist Andrés ideale Zielgruppe (ICP)?",
-    "ground_truth_answer": "Zwei Säulen: (1) Corporate/Hohenstein — TIC-Branche Unternehmen die KI-Weiterbildung brauchen, (2) Freelance — Kleinere KMU die KI-Potenzial erkennen aber kein Budget für große Agenturen haben.",
-    "expected_contexts": ["00 Kontext/ICP"],
-    "tags": ["icp", "zielgruppe"]
-  },
-  {
-    "question": "Welchen Schreibstil verwendet André?",
-    "ground_truth_answer": "Professionell aber locker, direkt und selbstbewusst, handlungsorientiert. Du-Ansprache, viele Bulletpoints, fette Schlüsselbegriffe. KI statt AI. No-Gos: Passive Schachtelsätze, reine Theorie, aufgeblähte Formulierungen.",
-    "expected_contexts": ["00 Kontext/Schreibstil"],
-    "tags": ["schreibstil", "tonalität"]
-  },
-  {
-    "question": "Was sagt der Stanford AI Index 2026?",
-    "ground_truth_answer": "Vertrauenskrise: 56% der KI-Experten aufgeregt vs. nur 10% der Bevölkerung. China nur noch 2,7% hinter Anthropic. Grok-4 Training = 72.816 Tonnen CO2. KI-Labs haben zwei Jahre das Capability-Rennen gefahren, öffentliches Vertrauen zieht nicht nach.",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/Stanford AI Index 2026 — Vertrauenskrise"],
-    "tags": ["stanford", "ai-index", "vertrauen"]
-  },
-  {
-    "question": "Was ist die Kernaussage von 'Dein Intent ist der Schlüssel zur Automatisierung'?",
-    "ground_truth_answer": "Der wichtigste Beitrag des Menschen ist der Intent (Zielsetzung), nicht die Ausführung. CLAUDE.md spielt eine zentrale Rolle da sie bei jeder Anfrage gelesen wird. Subagents sind ein Game Changer weil sie eigenen Kontext haben.",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/KI - Dein Intent ist der Schlüssel zur Automatisierung"],
-    "tags": ["intent", "claude", "agents"]
-  },
-  {
-    "question": "Warum ist ONNX nicht immer schneller als FP32 auf DirectML?",
-    "ground_truth_answer": "Der KV-Cache muss pro Token-Schritt komplett zwischen CPU und GPU kopiert werden (64 MB pro Schritt). Python-ONNX-Runtime hat fundamentalen Bottleneck. FP32 mit model.generate() hält KV-Cache auf GPU. Einzige Lösung: Rust/C++ Implementation.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Tech Skills/ONNX vs FP32 auf DirectML"],
-    "tags": ["onnx", "directml", "performance"]
-  },
-  {
-    "question": "Wie erkennt man VRAM korrekt auf Windows?",
-    "ground_truth_answer": "DXGI via COM/ctypes — einzig zuverlässige Methode. Windows-Registry und WMI sind 32-bit-Felder (max 4 GB). IDXGIAdapter1::GetDesc1() liefert DedicatedVideoMemory als SIZE_T (64-bit). Maximum über alle Adapter nehmen.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Tech Skills/Windows VRAM-Erkennung via DXGI"],
-    "tags": ["windows", "vram", "dxgi"]
-  },
-  {
-    "question": "Welche Best Practices gelten für die CLAUDE.md?",
-    "ground_truth_answer": "U-förmige Aufmerksamkeit (Anfang/Ende stark, Mitte Dead Zone). ~150 diskrete Anweisungen als Obergrenze. Jede unnötige Regel verdünnt alle anderen (Zero-Sum). Tabellen statt Fließtext, Workflows nur als Trigger-Referenz.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Tools & Anleitungen/Claude — Best Practices & Prompting"],
-    "tags": ["claude", "prompting", "claude-md"]
-  },
-  {
-    "question": "Was ist Superpowers und wie funktioniert es?",
-    "ground_truth_answer": "Development-Workflow-Framework von Jesse Vincent (MIT) das Claude Code einen disziplinierten Entwicklungs-Workflow aufzwingt. Mandatory Skills — wenn ein Skill passt, ist er Pflicht. Red Flag Tables gegen typische Rationalisierungen.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Tools & Anleitungen/Superpowers"],
-    "tags": ["superpowers", "workflow", "claude-code"]
-  },
-  {
-    "question": "Wie unterscheidet sich LLM Wiki von RAG?",
-    "ground_truth_answer": "Bei RAG sucht man nach ähnlichen Text-Chunks (semantische Ähnlichkeit). Beim LLM Wiki navigiert Claude einer Struktur entlang und folgt Links wie in Wikipedia. Wissen compound sich mit jeder neuen Quelle. Karpathys Erfahrung: ~100 Artikel, ~500.000 Wörter ohne RAG nötig.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Tools & Anleitungen/Karpathys Second Brain mit Claude Code nachbauen"],
-    "tags": ["llm-wiki", "rag", "karpathy"]
-  },
-  {
-    "question": "Was ist Obsidian Bases und warum ersetzt es Dataview?",
-    "ground_truth_answer": "Natives Core-Plugin (ab Obsidian 1.9+) das Notizen in strukturierte, filterbare Datenbank-Views verwandelt. Liest YAML-Frontmatter-Properties, zeigt tabellarisch an mit Inline-Bearbeitung. Performanter und wartungsärmer als Dataview, unterstützt aber kein Inline-Dataview-Syntax.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Obsidian Plugins/Obsidian Bases"],
-    "tags": ["obsidian", "bases", "dataview"]
-  },
-  {
-    "question": "Was steht im KI-Newsletter vom 16. April 2026?",
-    "ground_truth_answer": "Spatial Intelligence (Vantor 3D-Erdglobus bei 50cm Auflösung), GPT-5.4 Pro löst 60-Jahre-Erdős-Problem, Claude Opus 4.7 + OpenAI Spud droppen, Anthropics Scare-then-Ship-Playbook.",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Newsletter/2026/2026-04/2026-04-16"],
-    "tags": ["newsletter", "daily"]
-  },
-  {
-    "question": "Was wurde am 15. April 2026 gemacht?",
-    "ground_truth_answer": "Vormittag: Paperclip-Notiz erweitert und Updated. Nachmittag: OpenClaw & Entropic evaluiert, Newsletter-Digest Workflow durchdacht. Abend: HeinzAI Komplett-Recherche mit 10-teiligem Bericht, Qualitätsreview mit 9 zusätzlichen Teilen (12-20).",
-    "expected_contexts": ["05 Daily Notes/2026/2026-04/2026-04-15"],
-    "tags": ["daily-note", "logbuch"]
-  },
-  {
-    "question": "Wie hat sich das Second Brain über die Zeit entwickelt?",
-    "ground_truth_answer": "Vault am 05.04.2026 eingerichtet. Newsletter-Automatisierung am 06.04. live. VideoAnalyzer gebaut. 10-Hour YouTube MBA komplett analysiert (18 Videos). CLAUDE.md von 124 auf 61 Zeilen optimiert. Vault-Index eingeführt.",
-    "expected_contexts": ["03 Bereiche/Freelance/Second Brain Journey"],
-    "tags": ["second-brain", "journey", "meilensteine"]
-  },
-  {
-    "question": "Was ist der SEO Audit für beyerdynamic?",
-    "ground_truth_answer": "Professioneller SEO-Audit-Service für beyerdynamic (Premium-Audiohersteller, Heilbronn). SEO-Score 59/100 (korrigiert nach systematischer Verifikation, 5 Fehlbefunde). CEO-Briefing versendet, wartet auf Umsetzung.",
-    "expected_contexts": ["02 Projekte/Freelance/SEO Audit Kopfhörerhersteller"],
-    "tags": ["seo", "beyerdynamic", "freelance"]
-  },
-  {
-    "question": "Welche DSGVO-Artikel sind relevant für RAG-Systeme?",
-    "ground_truth_answer": "Art. 5 (Datenminimierung — Chunking-Filter), Art. 6 (Rechtsgrundlage — berechtigtes Interesse), Art. 17 (Recht auf Löschung — Dokument-Level-Deletion im Vector Store), Art. 25 (Privacy by Design — PII-Detection vor Embedding), Art. 32 (Technisch-organisatorische Maßnahmen).",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/11 KI-Compliance DSGVO & AI Act"],
-    "tags": ["dsgvo", "compliance", "rag"]
-  },
-  {
-    "question": "Warum sind Normen ein Problem für RAG-Systeme?",
-    "ground_truth_answer": "Vier fundamentale Probleme: (1) Urheberrecht — Volltextindexierung ohne Lizenz ist illegal, (2) Strukturelle Komplexität — Standard-Chunking zerstört logische Struktur, (3) Versionskontrolle — alte und neue Versionen können gleichzeitig gültig sein, (4) Normative Verweisungen — Referenzketten zu anderen Normen.",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/17 Normenwissen im RAG-System"],
-    "tags": ["normen", "rag", "hohenstein"]
-  },
-  {
-    "question": "Wie sieht die Vision für das KI-Weiterbildungszentrum aus?",
-    "ground_truth_answer": "KI-generierte personalisierte Lernpfade statt statische, Kursmaterial aus Wissensbasis automatisch generiert, Trainer-Wissen systematisch via Interview + RAG-Indexierung erfasst, adaptive Tests statt einmaliges Multiple-Choice, Norm-Aware RAG mit Versionskontrolle.",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/18 Weiterbildungszentrum-Architektur"],
-    "tags": ["weiterbildung", "hohenstein", "architektur"]
-  },
-  {
-    "question": "Wie sieht der POC-to-Production 90-Tage-Plan aus?",
-    "ground_truth_answer": "Phase 1 (Tag 1-30): Validierung — Schmerzpunkte identifizieren, Daten-Audit, MVP aufsetzen mit Obsidian + ObsidianRAG. Go/No-Go: Mindestens 3 von 5 Champions sagen 'Das spart mir Zeit'. AI Literacy Basisschulung für Pilotgruppe (EU AI Act Art. 4).",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/19 POC-to-Production 90-Tage-Plan"],
-    "tags": ["poc", "roadmap", "enterprise"]
-  },
-  {
-    "question": "Was sind die Grounding-Prinzipien für RAG-Prompts?",
-    "ground_truth_answer": "LLM darf nur bereitgestellten Kontext nutzen. Jede Aussage muss auf konkreten Chunk referenzieren. 'Ich weiß nicht'-Antworten müssen erlaubt sein. Keine Spekulation — kein 'wahrscheinlich' oder 'könnte sein'.",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/06 Prompt Engineering für RAG"],
-    "tags": ["rag", "prompt-engineering", "grounding"]
-  },
-  {
-    "question": "Was braucht ein CEO-Briefing laut Andrés Best Practices?",
-    "ground_truth_answer": "Vier Elemente: Kontext (warum dieses Dokument), Veränderung (was hat sich geändert), Erklärung (Fachbegriffe nicht voraussetzen), Action (was konkret tun). Action Items müssen extrem detailliert sein — Einzeiler reichen nicht.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Management Methoden/CEO-Briefings und Audit-Reports"],
-    "tags": ["ceo", "reporting", "management"]
-  },
-  {
-    "question": "Was ist LightRAG und für wen ist es relevant?",
-    "ground_truth_answer": "Standalone RAG-Framework (EMNLP 2025) mit Knowledge Graph statt einfacher Vektorsuche. 6.000x token-effizienter als Microsofts GraphRAG. Für persönlichen Vault-Use-Case Overkill, aber interessant als Demo-Objekt für KI-Weiterbildung bei Hohenstein.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Claude Skills/LightRAG — Graph-erweitertes RAG System"],
-    "tags": ["lightrag", "graph-rag", "wissensmanagement"]
-  },
-  {
-    "question": "Welche sprechenden KI-Assistenten hat André evaluiert?",
-    "ground_truth_answer": "Drei Kategorien: Voice-First Frameworks (z.B. Pipecat), komplette Assistenten, Starter/Templates. Pipecat wurde für Argus gewählt. Evaluierungskriterien: modulare Architektur, lokale Modelle, Echtzeit-Fähigkeit.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Tools & Anleitungen/Sprechende KI-Assistenten — Marktübersicht"],
-    "tags": ["voice-ai", "pipecat", "evaluierung"]
-  },
-  {
-    "question": "Was war das BuLi Prophet Projekt und was kam dabei raus?",
-    "ground_truth_answer": "Vollautomatisches Bundesliga-Vorhersagesystem mit ML-Modellen (XGBoost, Ensemble). 5 Sprints, 2448 Matches analysiert. Ergebnis: BTTS Edge widerlegt — kein Alpha vs. echte Buchmacher-Odds. Projekt abgeschlossen.",
-    "expected_contexts": ["06 Archiv/Eigenprojekte/BuLi Prophet"],
-    "tags": ["buli-prophet", "ml", "archiv"]
-  },
-  {
-    "question": "Was war die Prüfungs-App KI-Manager?",
-    "ground_truth_answer": "Offline-Lern-App für IHK KI-Manager-Abschlussprüfung. 120 Prüfungsfragen, intelligenter Lernalgorithmus, Prüfungssimulation, Dark Mode. Fertig und wird produktiv zur Prüfungsvorbereitung genutzt.",
-    "expected_contexts": ["06 Archiv/Eigenprojekte/Prüfungs-App KI-Manager"],
-    "tags": ["prüfung", "ki-manager", "archiv"]
-  },
-  {
-    "question": "Was war das Biophiles Design Buchprojekt?",
-    "ground_truth_answer": "Lernpaket für Andrés Frau (Innenarchitektin, Fokus Schularchitektur) zum englischen Fachbuch 'Biophilic Design' von Kellert & Heerwagen. 7 deutsche Audio-Podcasts via NotebookLM plus 7 schulspezifische Briefings.",
-    "expected_contexts": ["06 Archiv/Eigenprojekte/Biophiles Design Buchprojekt"],
-    "tags": ["biophiles-design", "familie", "archiv"]
-  },
-  {
-    "question": "Wie werden SEO-Audit-Befunde mit curl verifiziert?",
-    "ground_truth_answer": "Goldene Regel: Nie WebFetch allein vertrauen — hat bei beyerdynamic zu schwerem False-Positive geführt (Meta-Descriptions als fehlend gemeldet, obwohl per SSR vorhanden). Für jede HTML-Behauptung curl als Ground Truth verwenden.",
-    "expected_contexts": ["04 Ressourcen/Skills, Tech & Methoden/Tech Skills/SEO Audit Verifikation mit curl"],
-    "tags": ["seo", "curl", "verifikation"]
-  },
-  {
-    "question": "Was ist die Claude Routines Vault Integration?",
-    "ground_truth_answer": "Vault-basierte Tasks (z.B. KI-Newsletter Digest) von lokaler Scheduled-Task-Infrastruktur auf Claude Routines (Anthropic-Cloud) migrieren. Kern-Frage: Ganzes Vault als GitHub Repo oder nur Newsletter-Ordner separat?",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/Claude Routines Vault Integration"],
-    "tags": ["routines", "vault", "automatisierung"]
-  },
-  {
-    "question": "Warum ist MiroFish als TIC-Simulation gescheitert?",
-    "ground_truth_answer": "MiroFish ist ein Social-Media-Meinungssimulator (Twitter/Reddit-Dynamiken), nicht geeignet für strategische B2B-Unternehmensentscheidungen. 120 Runden produzierten nur 16 Events. Agenten reagieren auf Posts statt auf Marktdaten und Investitionsentscheidungen. Daher Wechsel zu Mesa.",
-    "expected_contexts": ["02 Projekte/Corporate/TIC-Branchensimulation Mesa", "06 Archiv/Corporate/MiroFish"],
-    "tags": ["mirofish", "mesa", "simulation", "cross-reference"]
-  },
-  {
-    "question": "Welche Projekte nutzen lokale Whisper-Modelle?",
-    "ground_truth_answer": "Drei Projekte: VoiceScribe (Dual-Engine ONNX INT8 + FP32 PyTorch, Speaker Diarization), LocalVox (GPU-lokales Diktat mit Hotkey, ONNX INT8 auf GPU/CPU), Mostovi (whisper.cpp via JNI auf Android/S24 Ultra).",
-    "expected_contexts": ["02 Projekte/Eigenprojekte/VoiceScribe", "02 Projekte/Eigenprojekte/LocalVox/LocalVox", "02 Projekte/Eigenprojekte/Mostovi"],
-    "tags": ["whisper", "speech-to-text", "cross-reference"]
-  },
-  {
-    "question": "Wie hängen Hohenstein KI-Strategie und Weiterbildungszentrum zusammen?",
-    "ground_truth_answer": "Die KI-Strategie (abgeschlossen) ist die GL-Entscheidungsvorlage mit Fahrplan. Das Weiterbildungszentrum ist die langfristige Vision: Von Textilbildung zum KI-Weiterbildungszentrum der TIC-Branche mit personalisiertem Lernen, Norm-Aware RAG und KI-Assistenten.",
-    "expected_contexts": ["02 Projekte/Corporate/KI-Strategie Hohenstein/KI-Strategie Hohenstein", "04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/HeinzAI Analyse & DIY Wissensmanagement/18 Weiterbildungszentrum-Architektur"],
-    "tags": ["hohenstein", "strategie", "weiterbildung", "cross-reference"]
-  },
-  {
-    "question": "Was haben Andrés Projekte mit Obsidian Second Brain zu tun?",
-    "ground_truth_answer": "Obsidian ist die zentrale Wissensbasis für alle Projekte. Claude liest/schreibt den Vault, CLAUDE.md definiert Regeln und Routinen, Mneme ergänzt semantische Suche. Das Second Brain Journey dokumentiert die Entwicklung. Claude Routines soll Vault-Tasks automatisieren.",
-    "expected_contexts": ["03 Bereiche/Freelance/Second Brain Journey", "02 Projekte/Eigenprojekte/Mneme", "04 Ressourcen/Skills, Tech & Methoden/Tools & Anleitungen/Obsidian + Claude Code zweites Gehirn"],
-    "tags": ["obsidian", "second-brain", "mneme", "cross-reference"]
-  },
-  {
-    "question": "Welche archivierten Projekte hat André und warum wurden sie archiviert?",
-    "ground_truth_answer": "Prüfungs-App KI-Manager (fertig, wird produktiv genutzt), BuLi Prophet (5 Sprints, kein Alpha vs. Buchmacher gefunden), Biophiles Design Buchprojekt (fertig ausgeliefert), Zweites Gehirn Obsidian (Setup abgeschlossen, Vault läuft produktiv), MiroFish (gescheitert, durch Mesa ersetzt).",
-    "expected_contexts": ["06 Archiv/Eigenprojekte/Prüfungs-App KI-Manager", "06 Archiv/Eigenprojekte/BuLi Prophet", "06 Archiv/Eigenprojekte/Biophiles Design Buchprojekt"],
-    "tags": ["archiv", "projekte", "cross-reference"]
-  },
-  {
-    "question": "Was ist die AI Tsunami Keynote und was bedeutet sie für Hohenstein?",
-    "ground_truth_answer": "Vijay Gurbaxani (UC Irvine) argumentiert KI ist eine General Purpose Technology wie Elektrizität. Nur 5,4% der US-Firmen nutzen KI (Census Bureau). 5-Dimensionen-Framework für AI-Ready Organization. Direkt relevant für Andrés KI-Strategie bei Hohenstein.",
-    "expected_contexts": ["04 Ressourcen/Künstliche Intelligenz/Wissen & Grundlagen/10-Hour YouTube MBA/A See the Storm Before It Hits/1. The AI Tsunami is Here"],
-    "tags": ["ai-tsunami", "youtube-mba", "strategie"]
-  },
-  {
-    "question": "Was ist Andrés Bereich Führung & Strategie bei Hohenstein?",
-    "ground_truth_answer": "Dauerhafte Verantwortung als Leiter Berufliche Weiterbildungsprogramme ab 01.05.2026. Akademie-Neuausrichtung von Textilbildung zu KI-Weiterbildungszentrum, Stakeholder-Management, Fördermittel (Qualifizierungschancengesetz), Aufbau interner KI-Kompetenz.",
-    "expected_contexts": ["03 Bereiche/Corporate/Hohenstein - Führung & Strategie/Hohenstein - Führung & Strategie"],
-    "tags": ["hohenstein", "führung", "bereich"]
-  },
-  {
-    "question": "Welche Rolle spielt Trading in Andrés Portfolio?",
-    "ground_truth_answer": "Eigenständiger Bereich: Krypto-Marktanalyse, Trading-Strategie entwickeln und testen, KI-gestützte Automatisierung via Trading Signal Tracker. BuLi Prophet (Bundesliga-Vorhersage) hat keinen Alpha vs. Buchmacher gefunden und wurde archiviert.",
-    "expected_contexts": ["03 Bereiche/Freelance/Trading & Finanzen/Trading & Finanzen", "06 Archiv/Eigenprojekte/BuLi Prophet"],
-    "tags": ["trading", "krypto", "cross-reference"]
-  },
-  {
-    "question": "Was ist Andrés Ansatz bei Persönlichkeitsentwicklung und Mindset?",
-    "ground_truth_answer": "Growth Mindset als Kernprinzip, lebenslanges Lernen. Aktive Themen: Buchnotizen, IHK KI-Manager Weiterbildung (kurz vor Abschluss), Reflexions-Routinen, Zukunftstechnologien verfolgen (AR, VR, KI, Web3).",
-    "expected_contexts": ["03 Bereiche/Privat/Persönlichkeitsentwicklung & Mindset/Persönlichkeitsentwicklung & Mindset"],
-    "tags": ["mindset", "lernen", "privat"]
+    "question": "Wie ist die PARA-Methode aufgebaut?",
+    "ground_truth_answer": "Projekte, Bereiche, Ressourcen, Archiv — vier Kategorien nach Tiago Forte.",
+    "expected_contexts": [
+      "04 Ressourcen/Methoden/PARA"
+    ],
+    "tags": [
+      "methode",
+      "wissensmanagement"
+    ]
+  },
+  {
+    "question": "Was ist ein Zettelkasten und wofür benutze ich ihn?",
+    "ground_truth_answer": "Niklas Luhmanns Notiz-System: atomare Notizen, Verlinkung, emergente Struktur statt Hierarchie.",
+    "expected_contexts": [
+      "04 Ressourcen/Methoden/Zettelkasten"
+    ],
+    "tags": [
+      "methode",
+      "notizen"
+    ]
+  },
+  {
+    "question": "Welche Schritte plane ich für den Website-Relaunch?",
+    "ground_truth_answer": "Discovery, Wireframes, Design-System, Implementation, QA, Launch.",
+    "expected_contexts": [
+      "02 Projekte/Website-Relaunch"
+    ],
+    "tags": [
+      "projekt",
+      "web"
+    ]
+  },
+  {
+    "question": "Welches ML-Modell habe ich für die Text-Klassifikation gewählt?",
+    "ground_truth_answer": "DistilBERT fine-tuned — guter Tradeoff zwischen Latenz und Accuracy bei meinem Datensatz.",
+    "expected_contexts": [
+      "02 Projekte/Text-Klassifikation-Prototyp"
+    ],
+    "tags": [
+      "ki",
+      "projekt"
+    ]
+  },
+  {
+    "question": "Was waren die Kernaussagen im Team-Meeting zur Q3-Roadmap?",
+    "ground_truth_answer": "Fokus auf Onboarding-Verbesserung, zwei Features zurückstellen, Hiring-Freeze bleibt.",
+    "expected_contexts": [
+      "03 Bereiche/Arbeit/Meetings/Q3-Roadmap Meeting"
+    ],
+    "tags": [
+      "meeting",
+      "arbeit"
+    ]
+  },
+  {
+    "question": "Wie funktioniert hybrid search mit Reciprocal Rank Fusion?",
+    "ground_truth_answer": "Separate Ranked-Lists von Vector-Search und BM25, RRF kombiniert per 1/(k+rank)-Formel.",
+    "expected_contexts": [
+      "04 Ressourcen/Technik/Hybrid Search"
+    ],
+    "tags": [
+      "ki",
+      "search"
+    ]
+  },
+  {
+    "question": "Welche Obsidian-Plugins nutze ich täglich?",
+    "ground_truth_answer": "Dataview, Templater, Bases, Tasks, Advanced Tables, Periodic Notes.",
+    "expected_contexts": [
+      "04 Ressourcen/Tools/Obsidian-Setup"
+    ],
+    "tags": [
+      "obsidian",
+      "tools"
+    ]
+  },
+  {
+    "question": "Welche Fitness-Routine verfolge ich aktuell?",
+    "ground_truth_answer": "5x pro Woche Krafttraining Push/Pull/Legs-Split, 2x Cardio, Sonntag Rest.",
+    "expected_contexts": [
+      "03 Bereiche/Gesundheit/Training"
+    ],
+    "tags": [
+      "gesundheit",
+      "fitness"
+    ]
+  },
+  {
+    "question": "Wie funktioniert mein Meal-Prep am Sonntag?",
+    "ground_truth_answer": "Vier Mahlzeiten vorbereiten, Protein + Kohlenhydrate + Gemüse, in Glas-Containern portionieren.",
+    "expected_contexts": [
+      "03 Bereiche/Gesundheit/Ernährung/Meal Prep"
+    ],
+    "tags": [
+      "ernaehrung",
+      "routine"
+    ]
+  },
+  {
+    "question": "Was habe ich aus dem Buch 'Deep Work' mitgenommen?",
+    "ground_truth_answer": "Fokus-Blöcke ohne Kontext-Wechsel, Shallow-Work minimieren, Energy-Management schlägt Time-Management.",
+    "expected_contexts": [
+      "04 Ressourcen/Buch-Notizen/Deep Work"
+    ],
+    "tags": [
+      "buch",
+      "produktivitaet"
+    ]
+  },
+  {
+    "question": "Welche Entscheidung habe ich bei der Datenbank-Auswahl getroffen?",
+    "ground_truth_answer": "SQLite mit FTS5 + sqlite-vec — lokal, zero-config, FTS und Vector-Index in einer Datei.",
+    "expected_contexts": [
+      "02 Projekte/Notizen-App/Architektur-Entscheidungen"
+    ],
+    "tags": [
+      "architektur",
+      "datenbank"
+    ]
+  },
+  {
+    "question": "Wie organisiere ich meine Daily Notes?",
+    "ground_truth_answer": "Ordnerstruktur YYYY/YYYY-MM/YYYY-MM-DD, Template mit Morgenroutine, Tasks, Session-Log.",
+    "expected_contexts": [
+      "04 Ressourcen/Methoden/Daily Notes Workflow"
+    ],
+    "tags": [
+      "workflow",
+      "notizen"
+    ]
+  },
+  {
+    "question": "Was ist der Unterschied zwischen BM25 und TF-IDF?",
+    "ground_truth_answer": "BM25 addiert Term-Saturation und Document-Length-Normalisierung — bessere Ranking-Qualität bei längeren Dokumenten.",
+    "expected_contexts": [
+      "04 Ressourcen/Technik/Information Retrieval"
+    ],
+    "tags": [
+      "ki",
+      "search"
+    ]
+  },
+  {
+    "question": "Welche Reiseziele stehen für nächstes Jahr auf meiner Liste?",
+    "ground_truth_answer": "Portugal im Frühling, Japan im Herbst, Island-Wochenende wenn Preise fallen.",
+    "expected_contexts": [
+      "03 Bereiche/Reisen/Wishlist"
+    ],
+    "tags": [
+      "reise",
+      "planung"
+    ]
+  },
+  {
+    "question": "Wie richte ich Git-Aliases für meinen Workflow ein?",
+    "ground_truth_answer": "co=checkout, br=branch, ci=commit, st=status, lg=log --oneline --graph — in ~/.gitconfig unter [alias].",
+    "expected_contexts": [
+      "04 Ressourcen/Tools/Git Cheatsheet"
+    ],
+    "tags": [
+      "tools",
+      "git"
+    ]
+  },
+  {
+    "question": "Was sind die Kernprinzipien für atomare Notizen?",
+    "ground_truth_answer": "Eine Idee pro Notiz, selbsterklärender Titel, Verlinkung statt Hierarchie, eigene Worte statt Copy-Paste.",
+    "expected_contexts": [
+      "04 Ressourcen/Methoden/Atomare Notizen"
+    ],
+    "tags": [
+      "methode",
+      "notizen"
+    ]
+  },
+  {
+    "question": "Welche Prompt-Techniken nutze ich am häufigsten?",
+    "ground_truth_answer": "Few-shot, Chain-of-Thought, Role-Prompting, explizite Output-Formate, Chunk-Decomposition bei langen Tasks.",
+    "expected_contexts": [
+      "04 Ressourcen/KI/Prompt Engineering"
+    ],
+    "tags": [
+      "ki",
+      "prompting"
+    ]
+  },
+  {
+    "question": "Wie messe ich die Qualität meiner Retrieval-Pipeline?",
+    "ground_truth_answer": "Hit@k und Mean Reciprocal Rank (MRR) auf einem Golden-Dataset mit Frage-Dokument-Paaren.",
+    "expected_contexts": [
+      "04 Ressourcen/Technik/Evaluation Metrics"
+    ],
+    "tags": [
+      "ki",
+      "evaluation"
+    ]
+  },
+  {
+    "question": "Welches Kochrezept nutze ich für schnelles Abendessen unter der Woche?",
+    "ground_truth_answer": "One-Pan-Pasta mit Cherry-Tomaten, Knoblauch, Spinat — 15 Minuten, eine Pfanne.",
+    "expected_contexts": [
+      "04 Ressourcen/Rezepte/One-Pan Pasta"
+    ],
+    "tags": [
+      "rezept",
+      "kochen"
+    ]
+  },
+  {
+    "question": "Welche Entscheidungs-Frameworks benutze ich bei großen Weichenstellungen?",
+    "ground_truth_answer": "10-10-10-Rule (Minuten/Monate/Jahre), Pre-Mortem, Regret-Minimization nach Bezos.",
+    "expected_contexts": [
+      "04 Ressourcen/Methoden/Entscheidungen treffen"
+    ],
+    "tags": [
+      "methode",
+      "entscheidungen"
+    ]
+  },
+  {
+    "question": "Wie strukturiere ich eine Projekt-MOC (Map of Content)?",
+    "ground_truth_answer": "Einstiegsnotiz mit Wikilinks zu allen verwandten Notizen, gruppiert nach Phase oder Thema, Frontmatter-Tags für Filter.",
+    "expected_contexts": [
+      "04 Ressourcen/Methoden/MOC-Struktur"
+    ],
+    "tags": [
+      "obsidian",
+      "methode"
+    ]
+  },
+  {
+    "question": "Was war das Ergebnis meines Experiments mit Cross-Encoder-Reranking?",
+    "ground_truth_answer": "Bei unter 500 Notizen hat Reranking die Accuracy gesenkt; erst bei größeren Vaults lohnt es sich.",
+    "expected_contexts": [
+      "02 Projekte/Notizen-App/Reranking-Experiment"
+    ],
+    "tags": [
+      "ki",
+      "experiment"
+    ]
+  },
+  {
+    "question": "Welche Podcasts abonniere ich regelmäßig?",
+    "ground_truth_answer": "Lex Fridman, Huberman Lab, Tim Ferriss, Alpha Centauri.",
+    "expected_contexts": [
+      "04 Ressourcen/Medien/Podcast-Abos"
+    ],
+    "tags": [
+      "medien",
+      "lernen"
+    ]
+  },
+  {
+    "question": "Wie gehe ich mit meinem Inbox-Zero-Prozess vor?",
+    "ground_truth_answer": "Alle Inbox-Items triagieren: sofort erledigen unter 2 Minuten, sonst tasken oder archivieren, jeden Tag auf null.",
+    "expected_contexts": [
+      "04 Ressourcen/Methoden/Inbox Zero"
+    ],
+    "tags": [
+      "workflow",
+      "produktivitaet"
+    ]
+  },
+  {
+    "question": "Welche Python-Bibliotheken bilden mein Standard-Stack für Datenanalyse?",
+    "ground_truth_answer": "pandas, numpy, matplotlib, seaborn, scikit-learn, jupyter — für ML zusätzlich torch und sentence-transformers.",
+    "expected_contexts": [
+      "04 Ressourcen/Technik/Python Datenanalyse Stack"
+    ],
+    "tags": [
+      "python",
+      "tools"
+    ]
   }
 ]

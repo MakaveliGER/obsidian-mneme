@@ -70,7 +70,7 @@ Obsidian Vault (Markdown)
 
 ```toml
 [vault]
-path = "D:\\Vault\\second-brain\\second-brain"
+path = "C:\\Users\\You\\Documents\\ObsidianVault"
 glob_patterns = ["**/*.md"]
 exclude_patterns = [".obsidian/**", ".trash/**"]
 

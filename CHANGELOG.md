@@ -142,9 +142,11 @@ tests, sdist/wheel build).
 
 ## [0.3.0] - 2026-04-17
 
-PyPI debut under the `obsidian-mneme` package name (the short `mneme` slug
-was already taken on PyPI by an unrelated project). Import path stays
-`import mneme`, the CLI command stays `mneme`.
+*Internal milestone — never published. Superseded by 0.3.1, which is the
+actual PyPI debut under the `obsidian-mneme` package name (the short
+`mneme` slug was already taken on PyPI by an unrelated project —
+`mneme-cli` by [@tolism](https://github.com/tolism/mneme)). Import path
+stays `import mneme`, the CLI command stays `mneme`.*
 
 ### Added
 - `mneme init` as an alias for `mneme setup`.

@@ -11,3 +11,7 @@ build/
 .claude/
 node_modules/
 obsidian-plugin/main.js
+
+# Local developer files — not shipped to PyPI / public GitHub
+CLAUDE.md
+tests/golden_dataset.private.json
