@@ -17,11 +17,33 @@ const execFileAsync = promisify(execFile);
  */
 export class MnemeClient {
   private serverProcess: ChildProcess | null = null;
+  private configUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private mnemePath: string = "mneme") {}
 
   setPath(path: string): void {
     this.mnemePath = path;
+  }
+
+  /** Debounced config update. Multiple calls with the same key within
+   * `delayMs` collapse into a single CLI invocation with the latest value.
+   * Avoids spawning `mneme update-config` on every keystroke of a text input.
+   */
+  scheduleConfigUpdate(key: string, value: string, delayMs: number = 400): void {
+    const existing = this.configUpdateTimers.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(async () => {
+      this.configUpdateTimers.delete(key);
+      try {
+        await this.updateConfig(key, value);
+      } catch (err) {
+        // Silent — settings pane shouldn't spam notifications on every
+        // failed config update. Log to console for debugging.
+        // eslint-disable-next-line no-console
+        console.warn(`[Mneme] debounced updateConfig(${key}) failed:`, err);
+      }
+    }, delayMs);
+    this.configUpdateTimers.set(key, timer);
   }
 
   /** Ping the HTTP server's /health endpoint.

@@ -73,7 +73,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
               | "smart"
               | "always";
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
+            this.plugin.client.scheduleConfigUpdate(
               "auto_search.mode",
               value
             );
@@ -90,7 +90,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
       onChange: async (value) => {
         this.plugin.settings.searchTopK = value;
         await this.plugin.saveSettings();
-        await this.plugin.client.updateConfig("search.top_k", String(value));
+        this.plugin.client.scheduleConfigUpdate("search.top_k", String(value));
       },
     });
 
@@ -111,7 +111,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
               | "cpu"
               | "cuda";
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
+            this.plugin.client.scheduleConfigUpdate(
               "embedding.device",
               value
             );
@@ -135,7 +135,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
               | "bfloat16"
               | "float32";
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
+            this.plugin.client.scheduleConfigUpdate(
               "embedding.dtype",
               value
             );
@@ -182,7 +182,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.embeddingModel = value;
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
+            this.plugin.client.scheduleConfigUpdate(
               "embedding.model",
               value
             );
@@ -199,7 +199,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
       onChange: async (value) => {
         this.plugin.settings.embeddingBatchSize = value;
         await this.plugin.saveSettings();
-        await this.plugin.client.updateConfig("embedding.batch_size", String(value));
+        this.plugin.client.scheduleConfigUpdate("embedding.batch_size", String(value));
       },
     });
 
@@ -215,7 +215,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
       onChange: async (value) => {
         this.plugin.settings.chunkMaxTokens = value;
         await this.plugin.saveSettings();
-        await this.plugin.client.updateConfig("chunking.max_tokens", String(value));
+        this.plugin.client.scheduleConfigUpdate("chunking.max_tokens", String(value));
       },
     });
 
@@ -229,7 +229,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
       onChange: async (value) => {
         this.plugin.settings.chunkOverlapTokens = value;
         await this.plugin.saveSettings();
-        await this.plugin.client.updateConfig("chunking.overlap_tokens", String(value));
+        this.plugin.client.scheduleConfigUpdate("chunking.overlap_tokens", String(value));
       },
     });
 
@@ -246,7 +246,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
       onChange: async (value) => {
         this.plugin.settings.vectorWeight = value;
         await this.plugin.saveSettings();
-        await this.plugin.client.updateConfig("search.vector_weight", String(value));
+        this.plugin.client.scheduleConfigUpdate("search.vector_weight", String(value));
       },
     });
 
@@ -261,7 +261,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
       onChange: async (value) => {
         this.plugin.settings.bm25Weight = value;
         await this.plugin.saveSettings();
-        await this.plugin.client.updateConfig("search.bm25_weight", String(value));
+        this.plugin.client.scheduleConfigUpdate("search.bm25_weight", String(value));
       },
     });
 
@@ -283,7 +283,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.rerankingEnabled = value;
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
+            this.plugin.client.scheduleConfigUpdate(
               "reranking.enabled",
               String(value)
             );
@@ -304,7 +304,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
         onChange: async (value) => {
           this.plugin.settings.rerankingThreshold = value;
           await this.plugin.saveSettings();
-          await this.plugin.client.updateConfig("reranking.threshold", String(value));
+          this.plugin.client.scheduleConfigUpdate("reranking.threshold", String(value));
         },
       });
     }
@@ -327,7 +327,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.garsEnabled = value;
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
+            this.plugin.client.scheduleConfigUpdate(
               "scoring.gars_enabled",
               String(value)
             );
@@ -347,7 +347,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
         onChange: async (value) => {
           this.plugin.settings.graphWeight = value;
           await this.plugin.saveSettings();
-          await this.plugin.client.updateConfig("scoring.graph_weight", String(value));
+          this.plugin.client.scheduleConfigUpdate("scoring.graph_weight", String(value));
         },
       });
     }
@@ -369,7 +369,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
               .map((s) => s.trim())
               .filter((s) => s.length > 0);
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
+            this.plugin.client.scheduleConfigUpdate(
               "auto_search.hook_matchers",
               this.plugin.settings.hookMatchers.join(",")
             );
@@ -400,7 +400,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
               .map((s) => s.trim())
               .filter((s) => s.length > 0);
             await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
+            this.plugin.client.scheduleConfigUpdate(
               "health.exclude_patterns",
               this.plugin.settings.healthExcludePatterns.join(",")
             );
