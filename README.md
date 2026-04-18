@@ -10,19 +10,44 @@
 
 **Semantische Vault-Suche für Obsidian — komplett lokal, keine API-Keys, keine Cloud.**
 
-Obsidian Mneme indexiert deine Markdown-Notizen mit BGE-M3 (multilingual) und exponiert sie als [MCP-Server](https://modelcontextprotocol.io/). Deine Claude-Session sucht dann direkt im Vault. Daten verlassen deinen Rechner nicht.
+Obsidian Mneme indexiert deine Markdown-Notizen mit BGE-M3 (multilingual). Nutzbar **direkt in Obsidian via Plugin** (kein LLM nötig), **mit Claude Desktop / Claude Code / Cursor / jedem MCP-Client** oder **über die CLI**. Dein Vault bleibt auf deinem Rechner.
+
+*Der Name: **Mneme** (altgriechisch Μνήμη, "Erinnerung") war in der griechischen Mythologie eine der drei ursprünglichen Musen — Personifikation des Gedächtnisses. Passt zum Tool: Obsidian Mneme ist das externe Gedächtnis für deinen Vault. Claude fragt, Mneme erinnert sich.*
 
 > **Not to be confused with** [`mneme-cli`](https://pypi.org/project/mneme-cli/) by [@tolism](https://github.com/tolism/mneme) — that's an unrelated regulatory QMS tool for medical-device compliance (EU MDR / ISO 13485). This project is a semantic-search MCP server for personal Obsidian vaults. PyPI package name: **`obsidian-mneme`**.
 
 ---
 
+## Wofür ist das?
+
+Obsidians eingebaute Volltextsuche findet nur exakte Strings. **Obsidian Mneme liefert semantische Suche** — findet Inhalte nach Bedeutung, auch wenn du andere Wörter verwendet hast. Drei Wege, das zu nutzen — wähl einen oder kombiniere:
+
+### 1. Direkt in Obsidian (Plugin)
+
+**Kein LLM nötig.** Ribbon-Icon klicken → Search-Sidebar → Query tippen. Hybrid-Search (Semantik + Keyword) auf deinem Vault. Läuft komplett offline. Zusätzlich: "Similar Notes"-Tab für die aktuelle Notiz und Vault-Health-Modal (Orphans / Stale / Weak-Links).
+
+### 2. Mit Claude Desktop / Claude Code / Cursor / jedem MCP-Client
+
+LLM-Session bekommt semantischen Zugriff auf deinen kompletten Vault via MCP. Beispiele:
+
+- *"Was hab ich letzten Monat über Thema XY notiert?"* — findet die Notiz auch mit anderen Wörtern.
+- *"Erinnere mich an den Architektur-Entscheid aus Projekt Z."* — zieht den relevanten Projektordner inkl. verwandter Notizen.
+- *"Welche Notizen sind verwandt mit der hier?"* — semantische Nachbarn über Dense-Embeddings + Wikilink-Graph.
+
+### 3. Von der CLI
+
+`mneme search "query"` für Scripts, Automation oder schnelles Nachschlagen. Auch `mneme similar <pfad>`, `mneme health`.
+
+---
+
 ## Für wen ist das?
 
-- Du nutzt **Obsidian** mit einem wachsenden Vault und **Claude Desktop** (oder Claude Code / Cursor).
-- Du willst, dass Claude deinen Vault **kennt** — nicht nur was du gerade kopierst.
-- **Datenschutz ist nicht verhandelbar.** Alles bleibt auf deiner Maschine.
+- **Obsidian-Poweruser** mit wachsendem Vault (50+ Notizen) — du willst bessere Suche als Obsidians Standard-FTS
+- **Privacy-bewusste** Menschen — alles lokal, keine Cloud
+- **KI-Chat-Nutzer** (Claude Desktop / Claude Code / Cursor / Continue), die LLM-Kontext mit persönlichem Wissen anreichern wollen — *optional, nicht erforderlich*
+- **Entwickler**, die einen lokalen RAG-Sidecar brauchen — kein LLM-Frontend
 
-Mneme ist nicht: eine Cloud-SaaS-App, ein Zettelkasten, ein LLM-Frontend. Es ist ein lokaler Retrieval-Sidecar.
+**Obsidian Mneme ist nicht:** ein Chat-UI, ein LLM-Frontend, ein Zettelkasten-Ersatz oder eine Cloud-SaaS-Alternative. Es ist ein **Retrieval-Sidecar** für deinen bestehenden Obsidian-Workflow.
 
 ---
 
