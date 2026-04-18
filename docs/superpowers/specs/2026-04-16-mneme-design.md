@@ -1,8 +1,18 @@
 # Mneme — Design Spec
 
 **Datum:** 2026-04-16
-**Status:** Draft
+**Status:** Historical snapshot (Phase 1 MVP). Architecture evolved since.
 **Scope:** Phase 1 (MVP) — Erweiterungspunkte für Phase 2+3 definiert
+
+> ⚠️ **This document is a frozen snapshot from Phase 1.** It does not reflect
+> the current transport architecture. As of v0.3.0:
+>
+> - PyPI name is `obsidian-mneme` (not `mneme` — taken on PyPI by an unrelated project).
+> - Default transport is `streamable-http` (not stdio) — see README for details.
+> - The Obsidian plugin auto-starts the HTTP server on Obsidian launch.
+>
+> The README is the source of truth for current usage. This spec is kept for
+> architectural context and phase-history.
 
 ---
 

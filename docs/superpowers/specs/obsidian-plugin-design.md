@@ -260,7 +260,11 @@ class MnemeClient {
 
 ### Phase 2 — HTTP/SSE Transport
 
-Wenn Mneme mit HTTP-Transport läuft (`mneme serve --transport http`), direkter API-Zugriff statt CLI-Roundtrip. Gleiche `MnemeClient`-Schnittstelle, andere Implementierung — Plugin-Code bleibt unverändert.
+**Shipped in v0.3.0 (2026-04-18):** Plugin auto-starts Mneme with
+`mneme serve --transport streamable-http` on Obsidian launch, and Claudian /
+Claude Desktop connects via `http://127.0.0.1:8765/mcp`. Plugin-internal
+searches still use the CLI path — the HTTP transport exists primarily to
+serve external MCP clients without paying per-session cold-start.
 
 ---
 
@@ -274,7 +278,7 @@ Beim ersten Plugin-Start (kein `data.json` vorhanden):
 4. Progress-Notice während Indexierung
 5. Bei Abschluss: Notice "Mneme bereit. 154 Notes indexiert."
 
-Falls `mneme` nicht im PATH: Hinweis auf Installation (`pip install mneme` oder `uvx mneme`).
+Falls `mneme` nicht im PATH: Hinweis auf Installation (`pip install obsidian-mneme`).
 
 ---
 
