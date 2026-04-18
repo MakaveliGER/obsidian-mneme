@@ -1,6 +1,6 @@
-# Mneme — Obsidian Plugin
+# Obsidian Mneme — Plugin
 
-Semantic vault search inside Obsidian. This plugin is the companion UI for [Mneme](https://github.com/MakaveliGER/mneme), a local MCP server for semantic search over your vault.
+Semantic vault search inside Obsidian. This plugin is the companion UI for [Obsidian Mneme](https://github.com/MakaveliGER/obsidian-mneme), a local MCP server for semantic search over your vault.
 
 **What it does:**
 - Starts a local Mneme HTTP server when Obsidian opens (optional, on by default)
@@ -18,7 +18,7 @@ Semantic vault search inside Obsidian. This plugin is the companion UI for [Mnem
 
 ### Option A — Pre-built release (recommended for most users)
 
-1. Download the latest release from [github.com/MakaveliGER/mneme/releases](https://github.com/MakaveliGER/mneme/releases) — get the three files:
+1. Download the latest release from [github.com/MakaveliGER/obsidian-mneme/releases](https://github.com/MakaveliGER/obsidian-mneme/releases) — get the three files:
    - `main.js`
    - `manifest.json`
    - `styles.css`
@@ -33,8 +33,8 @@ Semantic vault search inside Obsidian. This plugin is the companion UI for [Mnem
 For developers or users who want the bleeding edge:
 
 ```bash
-git clone https://github.com/MakaveliGER/mneme.git
-cd mneme/obsidian-plugin
+git clone https://github.com/MakaveliGER/obsidian-mneme.git
+cd obsidian-mneme/obsidian-plugin
 npm install
 npm run build
 # Then copy main.js + manifest.json + styles.css to <vault>/.obsidian/plugins/mneme/
@@ -51,7 +51,7 @@ pip install obsidian-mneme
 mneme setup                  # run through the wizard, choose HTTP transport
 ```
 
-Full install guide and `mneme setup` details: [main README](https://github.com/MakaveliGER/mneme/blob/main/README.md).
+Full install guide and `mneme setup` details: [main README](https://github.com/MakaveliGER/obsidian-mneme/blob/main/README.md).
 
 ---
 
@@ -101,7 +101,7 @@ Command palette → "Mneme: Reindex vault" for a manual incremental re-index. Fu
 
 **Port conflict** — Plugin tries port 8765 by default. If another app holds it, change **Server Port** in settings.
 
-**Claude Desktop can't see Mneme tools** — The plugin's server and Claude Desktop are separate concerns. The plugin only starts the shared HTTP server; Claude Desktop still needs its `claude_desktop_config.json` pointing at `http://127.0.0.1:8765/mcp`. See the [main README](https://github.com/MakaveliGER/mneme/blob/main/README.md#60-sekunden-quick-start-claude-desktop).
+**Claude Desktop can't see Mneme tools** — The plugin's server and Claude Desktop are separate concerns. The plugin only starts the shared HTTP server; Claude Desktop still needs its `claude_desktop_config.json` pointing at `http://127.0.0.1:8765/mcp`. See the [main README](https://github.com/MakaveliGER/obsidian-mneme/blob/main/README.md#60-sekunden-quick-start-claude-desktop).
 
 ---
 

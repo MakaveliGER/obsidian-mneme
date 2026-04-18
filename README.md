@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/MakaveliGER/mneme/main/design/banner.png" alt="Mneme Banner" width="100%">
+  <img src="https://raw.githubusercontent.com/MakaveliGER/obsidian-mneme/main/design/banner.png" alt="Obsidian Mneme Banner" width="100%">
 </p>
 
-# Mneme
+# Obsidian Mneme
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
@@ -10,7 +10,9 @@
 
 **Semantische Vault-Suche für Obsidian — komplett lokal, keine API-Keys, keine Cloud.**
 
-Mneme indexiert deine Markdown-Notizen mit BGE-M3 (multilingual) und exponiert sie als [MCP-Server](https://modelcontextprotocol.io/). Deine Claude-Session sucht dann direkt im Vault. Daten verlassen deinen Rechner nicht.
+Obsidian Mneme indexiert deine Markdown-Notizen mit BGE-M3 (multilingual) und exponiert sie als [MCP-Server](https://modelcontextprotocol.io/). Deine Claude-Session sucht dann direkt im Vault. Daten verlassen deinen Rechner nicht.
+
+> **Not to be confused with** [`mneme-cli`](https://pypi.org/project/mneme-cli/) by [@tolism](https://github.com/tolism/mneme) — that's an unrelated regulatory QMS tool for medical-device compliance (EU MDR / ISO 13485). This project is a semantic-search MCP server for personal Obsidian vaults. PyPI package name: **`obsidian-mneme`**.
 
 ---
 
@@ -94,7 +96,7 @@ Das Plugin startet den Mneme-HTTP-Server automatisch wenn Obsidian öffnet, zeig
 **Installation:**
 
 ```
-# 1. Release herunterladen: https://github.com/MakaveliGER/mneme/releases
+# 1. Release herunterladen: https://github.com/MakaveliGER/obsidian-mneme/releases
 #    (main.js, manifest.json, styles.css)
 # 2. Nach <vault>/.obsidian/plugins/mneme/ kopieren
 # 3. Obsidian: Settings → Community Plugins → Mneme aktivieren

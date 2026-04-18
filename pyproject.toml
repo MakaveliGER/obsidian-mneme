@@ -48,9 +48,9 @@ directml = ["onnxruntime-directml>=1.17", "transformers", "huggingface-hub"]
 cuda = ["onnxruntime-gpu>=1.17", "transformers", "huggingface-hub"]
 
 [project.urls]
-Homepage = "https://github.com/MakaveliGER/mneme"
-Repository = "https://github.com/MakaveliGER/mneme"
-Issues = "https://github.com/MakaveliGER/mneme/issues"
+Homepage = "https://github.com/MakaveliGER/obsidian-mneme"
+Repository = "https://github.com/MakaveliGER/obsidian-mneme"
+Issues = "https://github.com/MakaveliGER/obsidian-mneme/issues"
 
 [project.scripts]
 mneme = "mneme.cli:cli_entry"
