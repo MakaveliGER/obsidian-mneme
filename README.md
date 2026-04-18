@@ -10,56 +10,114 @@
 
 **Semantische Vault-Suche für Obsidian — komplett lokal, keine API-Keys, keine Cloud.**
 
-Obsidian Mneme indexiert deine Markdown-Notizen mit BGE-M3 (multilingual). Nutzbar **direkt in Obsidian via Plugin** (kein LLM nötig), **mit Claude Desktop / Claude Code / Cursor / jedem MCP-Client** oder **über die CLI**. Dein Vault bleibt auf deinem Rechner.
+Obsidian Mneme indexiert deine Markdown-Notizen mit BGE-M3 und macht sie auf drei Wegen nutzbar: **als Suche direkt in Obsidian** (kein LLM nötig), **als Wissensquelle für Claude Desktop / Claude Code / Cursor** via MCP, oder **über eine CLI** für Scripts. Dein Vault bleibt auf deinem Rechner.
 
-*Der Name: **Mneme** (altgriechisch Μνήμη, "Erinnerung") war in der griechischen Mythologie eine der drei ursprünglichen Musen — Personifikation des Gedächtnisses. Passt zum Tool: Obsidian Mneme ist das externe Gedächtnis für deinen Vault. Claude fragt, Mneme erinnert sich.*
+> **Not to be confused with** [`mneme-cli`](https://pypi.org/project/mneme-cli/) by [@tolism](https://github.com/tolism/mneme) — that's an unrelated regulatory QMS tool for medical-device compliance. This project is a semantic-search MCP server for personal Obsidian vaults. PyPI package name: **`obsidian-mneme`**.
 
-> **Not to be confused with** [`mneme-cli`](https://pypi.org/project/mneme-cli/) by [@tolism](https://github.com/tolism/mneme) — that's an unrelated regulatory QMS tool for medical-device compliance (EU MDR / ISO 13485). This project is a semantic-search MCP server for personal Obsidian vaults. PyPI package name: **`obsidian-mneme`**.
+*Der Name: **Mneme** (altgriechisch Μνήμη, "Erinnerung") war eine der drei ursprünglichen Musen — Personifikation des Gedächtnisses.*
 
 ---
 
-## Wofür ist das?
+## Was bringt dir das?
 
-Obsidians eingebaute Volltextsuche findet nur exakte Strings. **Obsidian Mneme liefert semantische Suche** — findet Inhalte nach Bedeutung, auch wenn du andere Wörter verwendet hast. Drei Wege, das zu nutzen — wähl einen oder kombiniere:
+**Das Problem mit Obsidians Standard-Suche:** Sie findet nur Notizen, in denen genau deine Such-Wörter stehen. Du hast vor Monaten "Retrieval Augmented Generation" notiert und suchst heute nach "RAG" — keine Treffer. Du hast "Coroutinen" geschrieben, suchst nach "async" — nichts.
 
-### 1. Direkt in Obsidian (Plugin)
+**Mit Mneme:** Suche nach Bedeutung, nicht nach Buchstaben.
 
-**Kein LLM nötig.** Ribbon-Icon klicken → Search-Sidebar → Query tippen. Hybrid-Search (Semantik + Keyword) auf deinem Vault. Läuft komplett offline. Zusätzlich: "Similar Notes"-Tab für die aktuelle Notiz und Vault-Health-Modal (Orphans / Stale / Weak-Links).
+### 🔍 Direkt in Obsidian — kein LLM nötig
 
-### 2. Mit Claude Desktop / Claude Code / Cursor / jedem MCP-Client
+Ribbon-Icon klicken, Query tippen. Das Plugin liefert Treffer nach Bedeutung:
 
-LLM-Session bekommt semantischen Zugriff auf deinen kompletten Vault via MCP. Beispiele:
+- Query *"RAG"* → findet Notizen über Retrieval Augmented Generation, Vector-Suche, Embedding-Strategien
+- Query *"schnelle Entscheidungen treffen"* → findet deine Notizen über Pre-Mortems, Regret-Minimization, 10-10-10-Regel
+- Query *"warum Tests schreiben"* → findet Notizen über TDD, Regression-Schutz, Refactoring-Safety
 
-- *"Was hab ich letzten Monat über Thema XY notiert?"* — findet die Notiz auch mit anderen Wörtern.
-- *"Erinnere mich an den Architektur-Entscheid aus Projekt Z."* — zieht den relevanten Projektordner inkl. verwandter Notizen.
-- *"Welche Notizen sind verwandt mit der hier?"* — semantische Nachbarn über Dense-Embeddings + Wikilink-Graph.
+Offen eine Notiz, Tab auf "Ähnliche Notizen" wechseln → zeigt deine semantischen Nachbarn, nicht nur Wikilinks.
 
-### 3. Von der CLI
+![Plugin-Suche mit Ergebnissen](design/screenshots/plugin-search.png)
 
-`mneme search "query"` für Scripts, Automation oder schnelles Nachschlagen. Auch `mneme similar <pfad>`, `mneme health`.
+### 🤖 Mit Claude / Cursor / Continue — dein Vault wird Teil der Konversation
+
+Claude kennt dein Allgemein-Wissen, aber nicht dein persönliches. Mit Mneme fragt Claude automatisch deinen Vault ab, bevor er antwortet:
+
+- *"Erklär mir nochmal mein Setup für das Projekt X"* → Claude zieht deine Projekt-Notizen und baut darauf auf, statt aus dem Nichts zu halluzinieren
+- *"Welche Learnings habe ich über Prompt-Engineering gesammelt?"* → Cross-Project-Recherche über alle deine KI-Notizen
+- *"Analysiere meinen Trading-Ansatz vor dem Hintergrund der aktuellen Marktlage"* → Claude kombiniert deine Strategie-Notizen mit seinem Markt-Wissen
+- *"Was hab ich letzten Monat über Thema Y festgehalten?"* → findet die Notiz, auch wenn du andere Wörter verwendet hast
+
+![Claude Desktop mit Mneme-Tool-Call](design/screenshots/claudian-toolcall.png)
+
+### 🌱 Vault-Management
+
+Das Plugin bietet ein Vault-Health-Modal:
+
+- **Orphan Pages** — Notizen, die nirgends verlinkt sind (kandidaten fürs Aufräumen)
+- **Weak Links** — Notizen mit wenigen Verbindungen + semantisch passenden Vorschlägen
+- **Stale Notes** — Notizen, die als `status: aktiv` markiert aber seit >30 Tagen unangefasst sind
+- **Near Duplicates** — inhaltlich fast identische Notizen
+
+![Vault Health Modal](design/screenshots/plugin-health.png)
+
+---
+
+## Drei Wege, das zu nutzen
+
+1. **Direkt in Obsidian** (Plugin, kein LLM) — Search-Sidebar, Similar-Notes, Vault-Health
+2. **Mit Claude Desktop / Claude Code / Cursor / jedem MCP-Client** — Claude fragt, Mneme liefert Notizen als Kontext
+3. **Von der CLI** — `mneme search "query"` für Scripts und Automation
+
+Alle drei nutzen denselben Server, denselben Index, denselben Vault.
 
 ---
 
 ## Für wen ist das?
 
-- **Obsidian-Poweruser** mit wachsendem Vault (50+ Notizen) — du willst bessere Suche als Obsidians Standard-FTS
-- **Privacy-bewusste** Menschen — alles lokal, keine Cloud
-- **KI-Chat-Nutzer** (Claude Desktop / Claude Code / Cursor / Continue), die LLM-Kontext mit persönlichem Wissen anreichern wollen — *optional, nicht erforderlich*
-- **Entwickler**, die einen lokalen RAG-Sidecar brauchen — kein LLM-Frontend
+- **Obsidian-Poweruser** mit 50+ Notizen, die mehr wollen als exakte Wort-Matches — Plugin reicht, kein LLM nötig
+- **Claude- / Cursor- / Continue-User**, die ihren Vault in LLM-Sessions nutzen wollen
+- **Privacy-bewusste** Menschen — alles lokal, keine Cloud, keine API-Keys, keine Telemetrie
+- **Entwickler**, die einen lokalen RAG-Sidecar brauchen (kein LLM-Frontend)
 
-**Obsidian Mneme ist nicht:** ein Chat-UI, ein LLM-Frontend, ein Zettelkasten-Ersatz oder eine Cloud-SaaS-Alternative. Es ist ein **Retrieval-Sidecar** für deinen bestehenden Obsidian-Workflow.
+**Obsidian Mneme ist nicht:** ein Chat-UI, ein LLM-Frontend, ein Zettelkasten-Ersatz oder eine Cloud-SaaS-Alternative.
 
 ---
 
-## 60-Sekunden Quick-Start (Claude Desktop)
+## Getting Started
+
+Voraussetzungen einmalig für alle drei Modi:
 
 ```bash
-pip install obsidian-mneme
-mneme setup            # fragt Vault-Pfad, wählt Transport (http empfohlen)
-mneme serve            # HTTP-Server auf http://127.0.0.1:8765/mcp
+pip install obsidian-mneme         # in einem dedizierten venv!
+mneme setup                         # Wizard: Vault-Pfad, Transport (http empfohlen)
 ```
 
-Dann in `%APPDATA%\Claude\claude_desktop_config.json` (oder auf macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`) den Mneme-Server eintragen:
+> ⚠️ **Disk + Bandbreite beim ersten Lauf:** ~1 GB Python-Pakete + ~2 GB BGE-M3-Modell.
+> CPU-Erstindex auf 200 Notizen: 15-25 Min mit sichtbarer Progress-Bar. Danach: <10s pro Reindex, ~600 ms pro Query.
+
+> ⚠️ **Nutze immer ein dediziertes venv** (`python -m venv .venv` oder `uv venv`). `pip install obsidian-mneme` zieht CPU-torch — wenn du schon CUDA/ROCm-torch drin hast, wird's überschrieben. Details siehe [GPU-Support](#gpu-support-optional).
+
+Danach entscheide welchen Modus du willst:
+
+### 🔍 Nur Obsidian-Plugin (kein LLM)
+
+**Am einfachsten.** Das Plugin startet den Mneme-Server automatisch beim Obsidian-Öffnen.
+
+1. **Server-Binary-Pfad merken:** `mneme --version` ausführen, dann unter Windows `where mneme` / macOS+Linux `which mneme`. Merke dir den absoluten Pfad (z.B. `C:\Users\You\.venv\Scripts\mneme.exe`).
+2. **Plugin installieren:** [Latest Release](https://github.com/MakaveliGER/obsidian-mneme/releases) herunterladen — `main.js`, `manifest.json`, `styles.css` nach `<vault>/.obsidian/plugins/mneme/` kopieren.
+3. **Plugin aktivieren:** Obsidian → Settings → Community Plugins → Mneme an.
+4. **Pfad eintragen:** Settings → Mneme → "Mneme Pfad" auf den Binary-Pfad aus Schritt 1. Auto-Start an (Default).
+5. **Obsidian neu laden** (Ctrl+P → "Reload app without saving"). Beim ersten Start lädt der Server das Modell (10-15 s, Notice oben rechts: *"HTTP-Fast-Path aktiv (Port 8765)"*).
+
+**Jetzt suchen:** Ribbon-Icon (goldene Muse) klicken → Sidebar öffnet sich → Query tippen → Ergebnisse in ~30 ms. Wechsel zum "Ähnliche Notizen"-Tab zeigt semantische Nachbarn der aktuell offenen Notiz.
+
+### 🤖 Claude Desktop (mit oder ohne Plugin)
+
+Voraussetzung: HTTP-Server läuft. Entweder:
+- **Plugin übernimmt Serverstart** — oben Schritt 1-5, dann ist der Server immer an wenn Obsidian auf ist.
+- **Oder manuell:** `mneme serve --transport streamable-http` in einem Terminal (alternativ als Windows-Autostart, siehe unten).
+
+Dann in `claude_desktop_config.json`:
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ```json
 {
@@ -72,11 +130,26 @@ Dann in `%APPDATA%\Claude\claude_desktop_config.json` (oder auf macOS: `~/Librar
 }
 ```
 
-**Claude Desktop komplett beenden** (System-Tray, nicht nur Fenster schließen) und neu starten. In einem neuen Chat: `@mneme search test` → Treffer aus deinem Vault.
+**Claude Desktop komplett beenden** (System-Tray → Quit, nicht nur Fenster schließen) und neu starten. In einem neuen Chat sollte Mneme als Tool-Provider gelistet sein. Frag: *"Fass mir meine letzten Notizen über Thema XY zusammen"* — Claude nutzt `search_notes` automatisch.
 
-> ⚠️ **Disk + Bandbreite:** Der erste Lauf zieht **~1 GB Python-Pakete** + **~2 GB** BGE-M3-Modell.  CPU-Erstindex auf ~200 Notizen braucht 15-25 Min (Progress-Bar sichtbar). Danach: Folgeläufe unter 10s, Queries in ~600 ms.
+### ⌨️ Claude Code (Terminal-CLI)
 
-> ⚠️ **torch-Version:** `pip install obsidian-mneme` installiert **CPU-torch**. Wenn du schon CUDA/ROCm-torch in der venv hast, überschreibt das deinen Install. **Nimm immer ein dediziertes venv** (`python -m venv .venv` oder `uv venv`). Details siehe [GPU-Support](#gpu-support-optional).
+Für Terminal-Sessions: `.claude/mcp.json` im Vault- oder Projekt-Ordner:
+
+```json
+{
+  "mcpServers": {
+    "mneme": {
+      "command": "mneme",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+stdio-Transport reicht hier — der Server wird pro Session gespawnt.
+
+> ⚠️ **Cold-Start-Warning für Claude Code auf Windows:** torch-Import in Electron-Kind-Prozessen via stdio kann 60-190s hängen. Workaround: den HTTP-Server parallel laufen lassen und in `.claude/mcp.json` auf `"type": "http"` + `"url"` umstellen (wie bei Claude Desktop).
 
 ---
 
@@ -95,39 +168,9 @@ Dann in `%APPDATA%\Claude\claude_desktop_config.json` (oder auf macOS: `~/Librar
 
 ---
 
-## Installation & Integration
+## Zusatz-Themen
 
-Drei Clients, drei Pfade. Such dir einen aus:
-
-### Claude Desktop (empfohlen)
-
-→ Siehe [60-Sekunden Quick-Start](#60-sekunden-quick-start-claude-desktop) oben.
-
-Optional als **Autostart beim Login** (kein Konsolen-Fenster):
-
-```powershell
-# Windows — registriert einen Task-Scheduler-Eintrag
-pwsh -File scripts/install-autostart-windows.ps1
-# Deinstallieren:
-pwsh -File scripts/uninstall-autostart-windows.ps1
-```
-
-Der Task startet `pythonw.exe -m mneme.cli serve --transport streamable-http`.
-
-### Obsidian-Plugin
-
-Das Plugin startet den Mneme-HTTP-Server automatisch wenn Obsidian öffnet, zeigt eine Such-Sidebar, Health-Modal und Status-Bar.
-
-**Installation:**
-
-```
-# 1. Release herunterladen: https://github.com/MakaveliGER/obsidian-mneme/releases
-#    (main.js, manifest.json, styles.css)
-# 2. Nach <vault>/.obsidian/plugins/mneme/ kopieren
-# 3. Obsidian: Settings → Community Plugins → Mneme aktivieren
-```
-
-Oder **aus dem Source bauen** (nur wenn du selbst Änderungen machst):
+**Plugin aus dem Source bauen** (nur wenn du selbst Änderungen machst):
 
 ```bash
 cd obsidian-plugin
@@ -138,29 +181,15 @@ npm run build
 
 > Plugin-Submission an den Obsidian Community Store kommt in einem späteren Release.
 
-**Was das Plugin macht:**
-- Beim Obsidian-Start: spawnt `mneme serve --transport streamable-http` im Hintergrund (wenn aktiviert)
-- Claude Desktop findet diesen Server dann direkt — kein manueller Serverstart nötig
-- Der Server läuft nur solange Obsidian läuft (Default — per Setting änderbar)
+**Windows-Autostart** (Server läuft beim Login im Hintergrund, kein Obsidian-Start nötig):
 
-### Claude Code (CLI)
-
-Für Claude Code in Terminal-Sessions: stdio-Transport reicht, der Server wird pro Session gespawnt.
-
-`.claude/mcp.json` im Vault- oder Projekt-Ordner:
-
-```json
-{
-  "mcpServers": {
-    "mneme": {
-      "command": "mneme",
-      "args": ["serve"]
-    }
-  }
-}
+```powershell
+pwsh -File scripts/install-autostart-windows.ps1
+# Deinstallieren:
+pwsh -File scripts/uninstall-autostart-windows.ps1
 ```
 
-> ⚠️ **Claude Code mit großen Python-Imports:** stdio-Transport in Electron-Kind-Prozessen kann auf Windows 60-190s hängen beim ersten Tool-Call (torch-Import). Wenn du Claude Code **und** Claude Desktop parallel nutzt, lass beide gegen den HTTP-Server laufen (siehe Quick-Start).
+Der Task startet `pythonw.exe -m mneme.cli serve --transport streamable-http` (kein Konsolen-Fenster).
 
 ---
 
