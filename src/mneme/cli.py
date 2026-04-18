@@ -79,8 +79,35 @@ def init(ctx: click.Context) -> None:
 
 
 @main.command()
-def serve():
-    """Start the MCP server (stdio transport for Claudian)."""
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "streamable-http"]),
+    default=None,
+    help="MCP transport. Overrides config.server.transport. Default: stdio.",
+)
+@click.option(
+    "--host",
+    default=None,
+    help="HTTP bind address (streamable-http only). Default: 127.0.0.1.",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=None,
+    help="HTTP port (streamable-http only). Default: 8765.",
+)
+def serve(transport: str | None, host: str | None, port: int | None):
+    """Start the MCP server.
+
+    Two transports are supported:
+
+    \b
+      stdio            — default. Speaks MCP over stdin/stdout for Claude
+                         Desktop, Claudian, and Claude Code.
+      streamable-http  — long-running HTTP server. Model is pre-warmed at
+                         startup (no first-call latency). Exposes /mcp and
+                         /health on 127.0.0.1:8765 by default.
+    """
     import logging
     import os
     import sys
@@ -88,10 +115,32 @@ def serve():
 
     import platformdirs
 
+    config = load_config()
+    if not config.vault.path:
+        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
+        raise SystemExit(1)
+
+    # CLI flags override config
+    if transport is not None:
+        config.server.transport = transport
+    if host is not None:
+        config.server.host = host
+    if port is not None:
+        config.server.port = port
+
+    chosen = config.server.transport
+    if chosen not in ("stdio", "streamable-http"):
+        click.echo(
+            f"Error: invalid transport '{chosen}'. "
+            "Use 'stdio' or 'streamable-http'.",
+            err=True,
+        )
+        raise SystemExit(1)
+
     # stdio MCP transport shares stdout with the JSON-RPC stream — any library
-    # that prints model-load progress to stdout would corrupt the protocol,
-    # especially now that init runs in a background thread parallel to MCP
-    # traffic. Silence everything progress-related before the model is loaded.
+    # that prints model-load progress to stdout would corrupt the protocol.
+    # Silence everything progress-related before the model is loaded. Harmless
+    # for HTTP mode (stdout is free there).
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
     os.environ.setdefault("TQDM_DISABLE", "1")
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
@@ -106,17 +155,16 @@ def serve():
 
     # Diagnostic: if anything hangs for >45s, dump all thread stack traces
     # to a debug file. Lets us see *exactly* where the Python interpreter is
-    # stuck without having to attach a debugger. Fires once, then disarms
-    # unless re-armed (we re-arm it in _load_model to give a fresh window).
+    # stuck without having to attach a debugger.
     import faulthandler
     fault_log = log_dir / "mneme-stacktrace.log"
     _fault_file = open(fault_log, "a", encoding="utf-8", buffering=1)
     faulthandler.enable(file=_fault_file)
     faulthandler.dump_traceback_later(45, repeat=True, file=_fault_file)
 
-    # Log to stderr AND to file — stderr is invisible to Claudian's MCP
-    # client, so a file handler is the only way to inspect server behaviour
-    # when debugging stdio hangs.
+    # For stdio, stdout is the MCP JSON-RPC channel — logs MUST go to stderr
+    # so they don't corrupt the protocol. HTTP mode has stdout free, but we
+    # still default to stderr for consistency.
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -128,15 +176,18 @@ def serve():
     )
     logging.getLogger(__name__).info("=== mneme serve starting (pid=%d) ===", os.getpid())
 
-    config = load_config()
-    if not config.vault.path:
-        click.echo("Error: No vault path configured. Run 'mneme setup' first.", err=True)
-        raise SystemExit(1)
-
     from mneme.server import create_server
 
     server = create_server(config)
-    server.run(transport="stdio")
+    if chosen == "streamable-http":
+        click.echo(
+            f"Mneme HTTP server on http://{config.server.host}:{config.server.port}/mcp "
+            f"(health: http://{config.server.host}:{config.server.port}/health)",
+            err=True,
+        )
+        server.run(transport="streamable-http")
+    else:
+        server.run(transport="stdio")
 
 
 @main.command()

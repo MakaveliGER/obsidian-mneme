@@ -17,6 +17,16 @@ uses [Semantic Versioning](https://semver.org/).
   subprocess contexts. Default provider unchanged.
 - `scripts/verify_provider_parity.py` — dev-only byte-parity check
   (float32, CPU) between the two providers.
+- HTTP transport (`streamable-http`) via FastMCP. Opt-in — stdio remains the
+  default. `mneme serve --transport streamable-http` binds loopback on
+  `127.0.0.1:8765` (`/mcp` + `/health`), pre-warms the embedding model at
+  startup so the first request is fast.
+- `server` config section gains `host` and `port` fields.
+- `/health` endpoint reports `status`, `model_loaded`, `db_size_mb`, and any
+  init error — suitable for autostart readiness probes.
+- Windows autostart helpers: `scripts/install-autostart-windows.ps1` and
+  `scripts/uninstall-autostart-windows.ps1` register/remove a Task Scheduler
+  entry that launches the HTTP server via `pythonw.exe` at user logon.
 
 ## [0.3.0] - 2026-04-17
 

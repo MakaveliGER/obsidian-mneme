@@ -112,6 +112,64 @@ Falls du stattdessen [uvx](https://docs.astral.sh/uv/) nutzt und Mneme isoliert 
 
 `uvx` installiert Mneme (und transitiv torch) in ein separates Cache-venv — größer, aber keine Kollision mit deiner Projekt-venv.
 
+### HTTP Transport (long-running server, pre-warmed model)
+
+Alternative zu stdio: Mneme als lokaler HTTP-Dauerläufer. Das Embedding-Modell wird **beim Serverstart** geladen (nicht beim ersten Tool-Call), jede Client-Verbindung ist sofort schnell. Sinnvoll wenn du Mneme aus mehreren Clients parallel oder zwischen Claude-Desktop-Restarts ohne Reload nutzen willst.
+
+Start:
+
+```bash
+mneme serve --transport streamable-http
+# Server lauscht auf http://127.0.0.1:8765/mcp (+ /health)
+```
+
+Port/Host lassen sich per CLI-Flag oder `config.toml` ändern:
+
+```bash
+mneme serve --transport streamable-http --host 127.0.0.1 --port 9000
+```
+
+oder persistent:
+
+```toml
+[server]
+transport = "streamable-http"
+host = "127.0.0.1"
+port = 8765
+```
+
+Claude Desktop `mcp.json` für den HTTP-Endpoint:
+
+```json
+{
+  "mcpServers": {
+    "mneme": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp"
+    }
+  }
+}
+```
+
+**Health-Check:**
+
+```bash
+curl http://127.0.0.1:8765/health
+# {"status":"ok","model_loaded":true,"db_size_mb":12.4,"init_error":null}
+```
+
+**Autostart (Windows)** — registriert einen Task-Scheduler-Eintrag beim Login:
+
+```powershell
+pwsh -File scripts/install-autostart-windows.ps1
+# Deinstallieren:
+pwsh -File scripts/uninstall-autostart-windows.ps1
+```
+
+Der Task startet `pythonw.exe -m mneme.cli serve --transport streamable-http` (ohne Konsolenfenster). Wenn Port 8765 kollidiert: `-Port 9000` an das Install-Skript anhängen und `config.toml` entsprechend setzen.
+
+**Sicherheit:** Standardmäßig Loopback-only (`127.0.0.1`); FastMCP aktiviert DNS-Rebinding-Schutz automatisch. Nicht öffentlich binden — Mneme hat keine Auth.
+
 **Beispiel-Queries:**
 
 - `@mneme search_notes "Zettelkasten Methode"` — semantische Suche
@@ -147,7 +205,8 @@ Plugin-Submission an den Obsidian Community Store steht für eine spätere Versi
 | Command | Beschreibung |
 |---|---|
 | `mneme setup` / `mneme init` | Interaktiver Setup-Wizard |
-| `mneme serve` | MCP Server starten (stdio) |
+| `mneme serve` | MCP Server starten (stdio, Default) |
+| `mneme serve --transport streamable-http` | HTTP-Server auf 127.0.0.1:8765 (Modell pre-warmed) |
 | `mneme search <query>` | Hybrid-Suche (CLI, JSON-Output) |
 | `mneme similar <path>` | Semantisch ähnliche Notizen finden |
 | `mneme reindex` | Inkrementelle Re-Indexierung |
@@ -237,8 +296,8 @@ Obsidian Vault (.md)
         │
         ▼
    ┌──────────┐
-   │ MCP      │  FastMCP (stdio) → Claudian
-   │ Server   │  8 Tools
+   │ MCP      │  FastMCP (stdio | streamable-http) → Claudian / Claude Desktop
+   │ Server   │  8 Tools + /health
    └──────────┘
 ```
 
@@ -254,7 +313,7 @@ Obsidian Vault (.md)
 | Fusion | Reciprocal Rank Fusion (RRF) |
 | Graph | Wikilink-Graph, BFS-Traversal |
 | Reranking | BAAI/bge-reranker-v2-m3 (opt-in, CPU) |
-| MCP | FastMCP (stdio transport) |
+| MCP | FastMCP (stdio + streamable-http transports) |
 | Config | TOML + Pydantic Settings |
 | File Watching | Watchdog |
 

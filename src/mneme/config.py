@@ -52,7 +52,13 @@ class DatabaseConfig(BaseModel):
 
 
 class ServerConfig(BaseModel):
+    # "stdio" (default) speaks MCP via stdin/stdout for Claude Desktop / Claudian.
+    # "streamable-http" exposes MCP over HTTP — long-running server, model pre-warmed.
     transport: str = "stdio"
+    # HTTP transport only. Loopback by default; FastMCP also enables
+    # DNS-rebinding protection automatically for 127.0.0.1.
+    host: str = "127.0.0.1"
+    port: int = 8765  # non-standard to avoid conflicts with common dev servers
 
 
 class RerankingConfig(BaseModel):
