@@ -91,7 +91,7 @@ Mneme spricht [MCP](https://modelcontextprotocol.io/) über stdio. Das heißt: j
 - **[Claude Code](https://claude.ai/code)** (CLI) — Konfig in `.claude/mcp.json` im Projekt- oder Vault-Ordner.
 - **[Claudian](https://github.com/YishenTu/claudian)** — Obsidian-Plugin, das Claude Code im Vault verfügbar macht. Setzt dieselbe `.claude/mcp.json` voraus.
 
-Konfig nach `pip install mneme`:
+Konfig nach `pip install obsidian-mneme`:
 
 ```json
 {
