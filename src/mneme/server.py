@@ -171,7 +171,15 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
         # - HTTP:  lifespan owns shutdown, don't double-register
         if config.vault.path:
             logger.info("init step: VaultWatcher.start")
-            watcher = VaultWatcher(config.vault_path, indexer, config)
+            # Pass the search engine's centrality-cache invalidator so live
+            # edits that change the wikilink graph don't leave GARS serving
+            # stale scores. No-op cost when GARS is disabled (default).
+            watcher = VaultWatcher(
+                config.vault_path,
+                indexer,
+                config,
+                on_graph_change=search_engine.invalidate_centrality_cache,
+            )
             watcher.start()
             state["watcher"] = watcher
             if not http_mode:
@@ -246,6 +254,20 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
         if err:
             return err
         top_k = max(1, min(top_k, 100))
+        # Validate `after` as ISO-date at the tool boundary so a bad value
+        # surfaces as a structured MCP error instead of an unhandled exception
+        # bubbling up through the dispatcher.
+        if after is not None:
+            try:
+                from datetime import datetime as _dt
+                _dt.fromisoformat(after)
+            except ValueError:
+                return {
+                    "error": (
+                        f"Invalid 'after' date: {after!r}. "
+                        "Expected ISO-8601 (e.g. '2026-01-15' or '2026-01-15T10:30:00')."
+                    )
+                }
         start = time.monotonic()
         results = state["search"].search(
             query=query,
@@ -456,7 +478,17 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
         except ConfigUpdateError as e:
             return {"error": str(e)}
 
-        save_config(cfg)
+        # Roll back the in-memory mutation if the disk write fails — otherwise
+        # we'd return a success response while the on-disk config still shows
+        # the old value, and a restart reverts the change without warning.
+        try:
+            save_config(cfg)
+        except OSError as e:
+            section_name, _, setting_name = key.partition(".")
+            section = getattr(cfg, section_name, None)
+            if section is not None and hasattr(section, setting_name):
+                setattr(section, setting_name, old_value)
+            return {"error": f"Failed to persist config: {e}"}
 
         return {
             "updated_key": key,
@@ -486,6 +518,20 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
             return err
         gardener: VaultGardener = state["gardener"]
         all_checks = checks is None
+
+        # Reject unknown check names with a clear error instead of silently
+        # returning an empty report — LLM clients hit this with typos
+        # ("orphan" instead of "orphans") and get no feedback otherwise.
+        valid_checks = {"orphans", "weak_links", "stale", "duplicates"}
+        if not all_checks:
+            unknown = set(checks or []) - valid_checks
+            if unknown:
+                return {
+                    "error": (
+                        f"Unknown checks: {sorted(unknown)}. "
+                        f"Valid: {sorted(valid_checks)}."
+                    )
+                }
 
         report: dict = {}
 

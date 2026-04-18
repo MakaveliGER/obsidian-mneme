@@ -22,7 +22,14 @@ logger = logging.getLogger(__name__)
 class _VaultEventHandler(FileSystemEventHandler):
     """Internal watchdog handler that filters events and delegates to the indexer."""
 
-    def __init__(self, vault_path: Path, indexer, exclude_patterns: list[str], debounce_delay: float = 2.0) -> None:
+    def __init__(
+        self,
+        vault_path: Path,
+        indexer,
+        exclude_patterns: list[str],
+        debounce_delay: float = 2.0,
+        on_graph_change=None,
+    ) -> None:
         super().__init__()
         self._vault_path = vault_path
         self._indexer = indexer
@@ -30,6 +37,10 @@ class _VaultEventHandler(FileSystemEventHandler):
         self._debounce_delay = debounce_delay
         self._pending: dict[str, threading.Timer] = {}
         self._lock = threading.Lock()
+        # Called after any write that may have changed the wikilink graph.
+        # Used to invalidate SearchEngine's centrality cache so GARS doesn't
+        # serve stale scores after live edits. Optional — None = no callback.
+        self._on_graph_change = on_graph_change
 
     # ------------------------------------------------------------------
     # Helpers
@@ -79,6 +90,11 @@ class _VaultEventHandler(FileSystemEventHandler):
         with self._lock:
             self._pending.pop(key, None)
         action()
+        if self._on_graph_change is not None:
+            try:
+                self._on_graph_change()
+            except Exception as e:  # pragma: no cover — callback must never kill the watcher
+                logger.debug("on_graph_change callback failed: %s", e)
 
     def cancel_all(self) -> None:
         """Cancel all pending debounce timers."""
@@ -121,6 +137,11 @@ class _VaultEventHandler(FileSystemEventHandler):
         logger.debug("Deleted: %s", rel)
         # No debouncing for deletes — execute immediately.
         self._indexer.remove_file(rel)
+        if self._on_graph_change is not None:
+            try:
+                self._on_graph_change()
+            except Exception as e:
+                logger.debug("on_graph_change callback failed: %s", e)
 
     def on_moved(self, event: FileMovedEvent) -> None:
         if event.is_directory:
@@ -131,25 +152,43 @@ class _VaultEventHandler(FileSystemEventHandler):
         src_is_md = self._should_process(src)
         dest_is_md = self._should_process(dest)
 
+        graph_changed = False
         if src_is_md:
             src_rel = self._relative(src)
             logger.debug("Moved (src removed): %s", src_rel)
             self._indexer.remove_file(src_rel)
+            graph_changed = True
 
         if dest_is_md:
             dest_path = Path(dest)
             logger.debug("Moved (dest indexed): %s", dest_path)
             self._schedule(dest, lambda p=dest_path: self._indexer.index_file(p))
+            # _schedule fires the on_graph_change itself after the debounce
+            # runs; don't double-fire it here for the dest.
+
+        if graph_changed and not dest_is_md and self._on_graph_change is not None:
+            try:
+                self._on_graph_change()
+            except Exception as e:
+                logger.debug("on_graph_change callback failed: %s", e)
 
 
 class VaultWatcher:
     """Watches *vault_path* for .md file changes and keeps the indexer in sync."""
 
-    def __init__(self, vault_path: Path, indexer, config, debounce_delay: float = 2.0) -> None:
+    def __init__(
+        self,
+        vault_path: Path,
+        indexer,
+        config,
+        debounce_delay: float = 2.0,
+        on_graph_change=None,
+    ) -> None:
         self._vault_path = vault_path
         self._indexer = indexer
         self._exclude_patterns: list[str] = config.vault.exclude_patterns
         self._debounce_delay = debounce_delay
+        self._on_graph_change = on_graph_change
         self._observer: Observer | None = None
         self._handler: _VaultEventHandler | None = None
 
@@ -164,6 +203,7 @@ class VaultWatcher:
             indexer=self._indexer,
             exclude_patterns=self._exclude_patterns,
             debounce_delay=self._debounce_delay,
+            on_graph_change=self._on_graph_change,
         )
         self._observer = Observer()
         self._observer.schedule(self._handler, str(self._vault_path), recursive=True)

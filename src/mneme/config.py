@@ -148,13 +148,34 @@ MCP_FORBIDDEN_SECTIONS: frozenset[str] = frozenset(
 )
 
 
+# Per-key value constraints for update_config. Keys not listed here are
+# unconstrained beyond their Pydantic type. Ranges are inclusive.
+_CONFIG_VALUE_CONSTRAINTS: dict[str, dict] = {
+    "vault.path": {"non_empty_str": True},
+    "search.vector_weight": {"min": 0.0, "max": 1.0},
+    "search.bm25_weight": {"min": 0.0, "max": 1.0},
+    "search.top_k": {"min": 1, "max": 100},
+    "embedding.batch_size": {"min": 1, "max": 512},
+    "chunking.max_tokens": {"min": 50, "max": 8192},
+    "chunking.overlap_tokens": {"min": 0, "max": 2048},
+    "reranking.threshold": {"min": 0.0, "max": 1.0},
+    "reranking.top_k": {"min": 1, "max": 200},
+    "scoring.graph_weight": {"min": 0.0, "max": 1.0},
+    "health.stale_days": {"min": 1, "max": 3650},
+    "server.port": {"min": 1024, "max": 65535},
+}
+
+
 def apply_config_update(
     config: MnemeConfig, key: str, value: str
 ) -> tuple[str, object, object]:
     """Parse *value* into the existing setting's type and apply it on *config*.
 
     Returns ``(key, old_value, new_value)``. Raises ``ConfigUpdateError`` for
-    invalid keys or values. The caller is responsible for persisting (save_config).
+    invalid keys or out-of-range values. The caller is responsible for
+    persisting (save_config) AND for rolling back on save failure — use
+    ``(_, old, _) = apply_config_update(...)`` then ``setattr(section, name, old)``
+    in the exception handler.
     """
     import json as _json
 
@@ -204,6 +225,24 @@ def apply_config_update(
         raise ConfigUpdateError(
             f"Cannot parse '{value}' as {target_type.__name__}: {e}{hint}"
         ) from e
+
+    # Range / non-empty validation
+    constraints = _CONFIG_VALUE_CONSTRAINTS.get(key)
+    if constraints is not None:
+        if constraints.get("non_empty_str") and isinstance(parsed, str) and not parsed.strip():
+            raise ConfigUpdateError(
+                f"{key} must not be empty — an empty value would brick all commands."
+            )
+        lo = constraints.get("min")
+        hi = constraints.get("max")
+        if lo is not None and isinstance(parsed, (int, float)) and parsed < lo:
+            raise ConfigUpdateError(
+                f"{key}={parsed} is below the minimum ({lo})."
+            )
+        if hi is not None and isinstance(parsed, (int, float)) and parsed > hi:
+            raise ConfigUpdateError(
+                f"{key}={parsed} is above the maximum ({hi})."
+            )
 
     setattr(section, setting_name, parsed)
     return key, old_value, parsed
