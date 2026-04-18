@@ -164,11 +164,22 @@ tests, sdist/wheel build).
   `TRANSFORMERS_VERBOSITY=error`, `PYTHONWARNINGS=ignore`. Error stderr
   is sanitized before display: progress bars and warning lines are
   filtered out, last 3 meaningful lines shown.
-- **Ribbon icon color**. Plugin ribbon icon now matches the banner
-  wordmark (gold, `#C9A84C`) via CSS targeting
-  `.side-dock-ribbon-action[aria-label^="Mneme"]` and
-  `[data-icon="mneme"]`. SVG stays `currentColor`-driven so theme
-  overrides still work.
+- **Ribbon icon color**. Plugin ribbon icon now renders in the brand
+  gold (`#C9A84C`) matching the banner wordmark. Fill is hardcoded on
+  the addIcon `<g>` so it takes effect regardless of Obsidian theme
+  or CSS timing — a previous CSS-only attempt didn't render reliably
+  across themes.
+- **Plugin HTTP-fast-path visibility**. Startup now emits a Notice
+  confirming whether the HTTP fast-path engaged (`HTTP-Fast-Path aktiv
+  (Port X)`) or why it fell back (e.g. `Auto-Start ist deaktiviert`).
+  Silent-fallback-to-CLI was the root cause of reported UI errors
+  where users didn't realise their searches were hitting the CLI cold
+  path. Fallback decisions are also logged to `console.warn` for
+  devtools inspection.
+- **Plugin CLI timeout bumped to 120s** for search/similar. 30s was
+  too aggressive for BGE-M3 cold-load + search on some setups, causing
+  the fallback path to report "Command failed" before the model even
+  finished loading.
 
 ## [0.3.0] - 2026-04-17
 

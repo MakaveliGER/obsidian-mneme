@@ -387,9 +387,11 @@ export class MnemeClient {
   /** Search the vault.
    *
    * Tries the warm HTTP server first (~10ms round-trip) and falls back to
-   * the CLI subprocess (2-3s cold per call) only if the HTTP path is
-   * unreachable. The fallback keeps the plugin functional if the user
-   * disabled autoStartServer or the server crashed between calls.
+   * the CLI subprocess (cold start ~15s first call, 2-3s thereafter) only
+   * if the HTTP path is unreachable. The fallback keeps the plugin
+   * functional if the user disabled autoStartServer or the server crashed
+   * between calls. Timeout bumped to 120s for the CLI path because BGE-M3
+   * cold-load + search can easily exceed 30s on first invocation.
    */
   async search(query: string, topK?: number): Promise<SearchResult[]> {
     if (this.httpPort !== null) {
@@ -398,13 +400,17 @@ export class MnemeClient {
           query, top_k: topK ?? 10,
         })) as { results?: SearchResult[] };
         return r.results || [];
-      } catch {
-        // fall through to CLI
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[Mneme] HTTP search failed, falling back to CLI:", err);
       }
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn("[Mneme] httpPort not set — search will use CLI fallback. Check autoStartServer + waitUntilWarm.");
     }
     const args = ["search", query, "--json"];
     if (topK) args.push("--top-k", String(topK));
-    const result = (await this.runArgs(args)) as { results?: SearchResult[] };
+    const result = (await this.runArgs(args, 120000)) as { results?: SearchResult[] };
     return result.results || [];
   }
 
@@ -416,13 +422,17 @@ export class MnemeClient {
           path, top_k: topK ?? 5,
         })) as { results?: SearchResult[] };
         return r.results || [];
-      } catch {
-        // fall through to CLI
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[Mneme] HTTP similar failed, falling back to CLI:", err);
       }
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn("[Mneme] httpPort not set — similar will use CLI fallback.");
     }
     const args = ["similar", path, "--json"];
     if (topK) args.push("--top-k", String(topK));
-    const result = (await this.runArgs(args)) as { results?: SearchResult[] };
+    const result = (await this.runArgs(args, 120000)) as { results?: SearchResult[] };
     return result.results || [];
   }
 
