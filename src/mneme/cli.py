@@ -82,15 +82,51 @@ def init(ctx: click.Context) -> None:
 def serve():
     """Start the MCP server (stdio transport for Claudian)."""
     import logging
+    import os
     import sys
+    from pathlib import Path
 
-    # Log to stderr so it doesn't interfere with stdio MCP transport
+    import platformdirs
+
+    # stdio MCP transport shares stdout with the JSON-RPC stream — any library
+    # that prints model-load progress to stdout would corrupt the protocol,
+    # especially now that init runs in a background thread parallel to MCP
+    # traffic. Silence everything progress-related before the model is loaded.
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+    os.environ.setdefault("TQDM_DISABLE", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    # Prevent HF-Hub network calls during model load — MCP servers must not
+    # block on network I/O. Cached models only.
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+    log_dir = Path(platformdirs.user_data_dir("mneme"))
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "mneme-server.log"
+
+    # Diagnostic: if anything hangs for >45s, dump all thread stack traces
+    # to a debug file. Lets us see *exactly* where the Python interpreter is
+    # stuck without having to attach a debugger. Fires once, then disarms
+    # unless re-armed (we re-arm it in _load_model to give a fresh window).
+    import faulthandler
+    fault_log = log_dir / "mneme-stacktrace.log"
+    _fault_file = open(fault_log, "a", encoding="utf-8", buffering=1)
+    faulthandler.enable(file=_fault_file)
+    faulthandler.dump_traceback_later(45, repeat=True, file=_fault_file)
+
+    # Log to stderr AND to file — stderr is invisible to Claudian's MCP
+    # client, so a file handler is the only way to inspect server behaviour
+    # when debugging stdio hangs.
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(message)s",
+        level=logging.DEBUG,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
         datefmt="%H:%M:%S",
-        stream=sys.stderr,
+        handlers=[
+            logging.StreamHandler(sys.stderr),
+            logging.FileHandler(log_file, mode="a", encoding="utf-8"),
+        ],
     )
+    logging.getLogger(__name__).info("=== mneme serve starting (pid=%d) ===", os.getpid())
 
     config = load_config()
     if not config.vault.path:

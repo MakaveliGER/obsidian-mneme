@@ -31,38 +31,65 @@ logger = logging.getLogger(__name__)
 from mneme.paths import normalize_vault_path
 
 
-def create_server(config: MnemeConfig | None = None) -> FastMCP:
-    """Create and configure the Mneme MCP server with all tools."""
+def create_server(config: MnemeConfig | None = None, *, background_init: bool = False) -> FastMCP:
+    """Create and configure the Mneme MCP server with all tools.
+
+    Args:
+        config: MnemeConfig. Loaded from default path if None.
+        background_init: Reserved for future use. Currently ignored — init
+            always runs synchronously on the first tool call.
+
+            Background init was attempted but deadlocks the MCP protocol:
+            _silenced_stdout (needed to suppress library prints during import)
+            uses ``os.dup2(devnull, 1)`` which is process-wide, so MCP response
+            writes from the main thread would go to devnull while the background
+            thread is importing. Only sync init on the dispatch thread is safe.
+    """
     if config is None:
         config = load_config()
 
     mcp = FastMCP("mneme", instructions="Semantic Obsidian vault search. Use search_notes to find relevant notes.")
 
-    # Eagerly initialized at server startup — model pre-loaded so first query is fast
+    # Sync init on first tool call: tool registration is fast so MCP handshake
+    # (tools/list) completes within client timeouts, and the heavy model load
+    # runs in the same thread that dispatched the first tool call. While that
+    # thread has stdout redirected via _silenced_stdout, no other MCP message
+    # is in flight — safe. A background thread would redirect stdout process-
+    # wide and break concurrent MCP responses.
     state: dict = {}
+    import threading as _threading
+    _init_done = _threading.Event()
+    _init_lock = _threading.Lock()
 
     def _initialize() -> None:
         t0 = time.monotonic()
-        logger.info("Mneme initializing...")
+        logger.info("Mneme init starting on first tool call (cold: 5-20s with AV exclusion, 60-130s without)...")
 
+        logger.info("init step: get_provider")
         provider = get_provider(config.embedding)
 
-        # Pre-load the embedding model so first query doesn't block
+        # Pre-load the embedding model so subsequent queries don't block
         if hasattr(provider, "warmup"):
+            logger.info("init step: provider.warmup")
             provider.warmup()
 
+        logger.info("init step: Store open")
         store = Store(config.db_path, provider.dimension())
+        logger.info("init step: Indexer")
         indexer = Indexer(store, provider, config)
 
         reranker = None
         if config.reranking.enabled:
+            logger.info("init step: Reranker load")
             reranker = Reranker(
                 model_name=config.reranking.model,
                 threshold=config.reranking.threshold,
             )
             reranker.warmup()
 
+        logger.info("init step: SearchEngine")
         search_engine = SearchEngine(store, provider, config.search, reranker=reranker, scoring_config=config.scoring)
+        logger.info("init step: VaultGardener")
         gardener = VaultGardener(store, search_engine, exclude_patterns=config.health.exclude_patterns)
         state["store"] = store
         state["provider"] = provider
@@ -73,6 +100,7 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
 
         # Start file watcher with shutdown hook
         if config.vault.path:
+            logger.info("init step: VaultWatcher.start")
             watcher = VaultWatcher(config.vault_path, indexer, config)
             watcher.start()
             state["watcher"] = watcher
@@ -80,19 +108,29 @@ def create_server(config: MnemeConfig | None = None) -> FastMCP:
 
         logger.info("Mneme ready (%.1fs)", time.monotonic() - t0)
 
-    # Initialize eagerly — block until model is loaded
-    try:
-        _initialize()
-    except Exception as e:
-        logger.error("Mneme initialization failed: %s", e)
-        state["init_error"] = str(e)
+    def _init_worker() -> None:
+        try:
+            _initialize()
+        except Exception as e:
+            logger.exception("Mneme initialization failed")
+            state["init_error"] = str(e)
+        finally:
+            _init_done.set()
 
     def _check_init() -> dict | None:
-        """Return error dict if server failed to initialize, else None."""
+        """Initialize on first call under lock. Return error dict on failure."""
+        if _init_done.is_set():
+            if "init_error" in state:
+                return {"error": f"Server not initialized: {state['init_error']}"}
+            return None
+        with _init_lock:
+            if _init_done.is_set():
+                if "init_error" in state:
+                    return {"error": f"Server not initialized: {state['init_error']}"}
+                return None
+            _init_worker()
         if "init_error" in state:
             return {"error": f"Server not initialized: {state['init_error']}"}
-        if "store" not in state:
-            return {"error": "Server not initialized"}
         return None
 
     @mcp.tool()

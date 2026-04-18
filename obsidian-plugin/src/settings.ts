@@ -30,7 +30,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Mneme Pfad")
       .setDesc(
-        "Pfad zur mneme CLI. Standard: 'mneme' (wenn im PATH)."
+        "Pfad zur mneme CLI. Standard: 'mneme' (wenn im PATH). Für isolierte Venvs: voller Pfad zur Binary (z.B. 'D:\\…\\.venv\\Scripts\\mneme.exe')."
       )
       .addText((text) =>
         text
@@ -49,18 +49,21 @@ export class MnemeSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Auto-Search Modus")
       .setDesc(
-        "Steuert, wann Mneme automatisch sucht."
+        "Nur relevant wenn Mneme über Claude Code / Claudian als MCP-Server genutzt wird. Steuert, ob Claude proaktiv im Vault sucht."
       )
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("off", "Off — Nur bei explizitem Aufruf")
+          .addOption(
+            "off",
+            "Off — Claude sucht nur wenn explizit das 'search' Tool aufgerufen wird"
+          )
           .addOption(
             "smart",
-            "Smart — Claude sucht proaktiv bei Wissensfragen (empfohlen)"
+            "Smart — CLAUDE.md-Hinweis empfiehlt Suche bei Wissensfragen (empfohlen)"
           )
           .addOption(
             "always",
-            "Always — Automatische Suche bei jedem File-Read"
+            "Always — PreToolUse-Hook injiziert bei jedem Read-Tool-Call vorher Vault-Kontext"
           )
           .setValue(this.plugin.settings.autoSearchMode)
           .onChange(async (value: string) => {
@@ -76,23 +79,19 @@ export class MnemeSettingsTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName("Search Top-K")
-      .setDesc("Anzahl der Suchergebnisse pro Abfrage.")
-      .addSlider((slider) =>
-        slider
-          .setLimits(1, 50, 1)
-          .setValue(this.plugin.settings.searchTopK)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.searchTopK = value;
-            await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
-              "search.top_k",
-              String(value)
-            );
-          })
-      );
+    this.addSliderSetting(containerEl, {
+      name: "Search Top-K",
+      desc: "Anzahl Suchergebnisse pro Abfrage. Höher = mehr Kontext, aber langsamer und mehr Rauschen.",
+      min: 1,
+      max: 50,
+      step: 1,
+      value: this.plugin.settings.searchTopK,
+      onChange: async (value) => {
+        this.plugin.settings.searchTopK = value;
+        await this.plugin.saveSettings();
+        await this.plugin.client.updateConfig("search.top_k", String(value));
+      },
+    });
 
     new Setting(containerEl)
       .setName("Embedding Device")
@@ -189,116 +188,93 @@ export class MnemeSettingsTab extends PluginSettingTab {
           })
       );
 
-    new Setting(advancedContainer)
-      .setName("Batch Size")
-      .setDesc(
-        "Batch-Größe für Embedding-Berechnung. 32 optimal für BGE-M3."
-      )
-      .addSlider((slider) =>
-        slider
-          .setLimits(8, 512, 8)
-          .setValue(this.plugin.settings.embeddingBatchSize)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.embeddingBatchSize = value;
-            await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
-              "embedding.batch_size",
-              String(value)
-            );
-          })
-      );
+    this.addSliderSetting(advancedContainer, {
+      name: "Batch Size",
+      desc: "Embedding-Batch-Größe. Höher = schneller auf GPU (braucht mehr VRAM), niedriger = weniger Memory. 32 optimal für BGE-M3.",
+      min: 8,
+      max: 512,
+      step: 8,
+      value: this.plugin.settings.embeddingBatchSize,
+      onChange: async (value) => {
+        this.plugin.settings.embeddingBatchSize = value;
+        await this.plugin.saveSettings();
+        await this.plugin.client.updateConfig("embedding.batch_size", String(value));
+      },
+    });
 
     this.addSectionTitle(advancedContainer, "Chunking");
 
-    new Setting(advancedContainer)
-      .setName("Chunk Max Tokens")
-      .setDesc(
-        "Maximale Chunk-Größe in Tokens. Größere Chunks = mehr Kontext, weniger Precision."
-      )
-      .addSlider((slider) =>
-        slider
-          .setLimits(200, 2000, 50)
-          .setValue(this.plugin.settings.chunkMaxTokens)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.chunkMaxTokens = value;
-            await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
-              "chunking.max_tokens",
-              String(value)
-            );
-          })
-      );
+    this.addSliderSetting(advancedContainer, {
+      name: "Chunk Max Tokens",
+      desc: "Maximale Chunk-Größe in Tokens. Größere Chunks = mehr Kontext, weniger Precision.",
+      min: 200,
+      max: 2000,
+      step: 50,
+      value: this.plugin.settings.chunkMaxTokens,
+      onChange: async (value) => {
+        this.plugin.settings.chunkMaxTokens = value;
+        await this.plugin.saveSettings();
+        await this.plugin.client.updateConfig("chunking.max_tokens", String(value));
+      },
+    });
 
-    new Setting(advancedContainer)
-      .setName("Chunk Overlap")
-      .setDesc(
-        "Überlappung zwischen Chunks in Tokens. Verhindert Informationsverlust an Chunk-Grenzen."
-      )
-      .addSlider((slider) =>
-        slider
-          .setLimits(0, 500, 10)
-          .setValue(this.plugin.settings.chunkOverlapTokens)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.chunkOverlapTokens = value;
-            await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
-              "chunking.overlap_tokens",
-              String(value)
-            );
-          })
-      );
+    this.addSliderSetting(advancedContainer, {
+      name: "Chunk Overlap",
+      desc: "Überlappung zwischen Chunks in Tokens. Verhindert Informationsverlust an Chunk-Grenzen.",
+      min: 0,
+      max: 500,
+      step: 10,
+      value: this.plugin.settings.chunkOverlapTokens,
+      onChange: async (value) => {
+        this.plugin.settings.chunkOverlapTokens = value;
+        await this.plugin.saveSettings();
+        await this.plugin.client.updateConfig("chunking.overlap_tokens", String(value));
+      },
+    });
 
     this.addSectionTitle(advancedContainer, "Suche");
 
-    new Setting(advancedContainer)
-      .setName("Vector Weight")
-      .setDesc(
-        "Gewichtung der Vektorsuche (0.0-1.0). Höher = mehr Semantik."
-      )
-      .addSlider((slider) =>
-        slider
-          .setLimits(0, 1, 0.05)
-          .setValue(this.plugin.settings.vectorWeight)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.vectorWeight = value;
-            await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
-              "search.vector_weight",
-              String(value)
-            );
-          })
-      );
+    this.addSliderSetting(advancedContainer, {
+      name: "Vector Weight",
+      desc: "Gewichtung der Vektorsuche (0.0-1.0). Höher = mehr Semantik.",
+      min: 0,
+      max: 1,
+      step: 0.05,
+      value: this.plugin.settings.vectorWeight,
+      format: (v) => v.toFixed(2),
+      onChange: async (value) => {
+        this.plugin.settings.vectorWeight = value;
+        await this.plugin.saveSettings();
+        await this.plugin.client.updateConfig("search.vector_weight", String(value));
+      },
+    });
 
-    new Setting(advancedContainer)
-      .setName("BM25 Weight")
-      .setDesc(
-        "Gewichtung der Keyword-Suche (0.0-1.0). Höher = mehr exakte Matches."
-      )
-      .addSlider((slider) =>
-        slider
-          .setLimits(0, 1, 0.05)
-          .setValue(this.plugin.settings.bm25Weight)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.bm25Weight = value;
-            await this.plugin.saveSettings();
-            await this.plugin.client.updateConfig(
-              "search.bm25_weight",
-              String(value)
-            );
-          })
-      );
+    this.addSliderSetting(advancedContainer, {
+      name: "BM25 Weight",
+      desc: "Gewichtung der Keyword-Suche (0.0-1.0). Höher = mehr exakte Matches.",
+      min: 0,
+      max: 1,
+      step: 0.05,
+      value: this.plugin.settings.bm25Weight,
+      format: (v) => v.toFixed(2),
+      onChange: async (value) => {
+        this.plugin.settings.bm25Weight = value;
+        await this.plugin.saveSettings();
+        await this.plugin.client.updateConfig("search.bm25_weight", String(value));
+      },
+    });
 
     this.addSectionTitle(advancedContainer, "Reranking");
+
+    advancedContainer.createEl("p", {
+      text: "⚠ Erst ab ~500 Notizen sinnvoll. Bei kleineren Vaults wurde ein Relevanz-Verlust von -7.6 % gemessen (Hit@1 gegen BM25+Vector).",
+      cls: "setting-item-description mneme-warning-text",
+    });
 
     new Setting(advancedContainer)
       .setName("Reranking aktivieren")
       .setDesc(
-        "CrossEncoder Reranking für präzisere Ergebnisse. Langsamer, aber genauer."
+        "CrossEncoder-Reranking (BGE-reranker-v2-m3) ordnet Top-N Treffer per Query-Dokument-Matching neu. Langsamer, bei großen Vaults genauer."
       )
       .addToggle((toggle) =>
         toggle
@@ -316,33 +292,33 @@ export class MnemeSettingsTab extends PluginSettingTab {
       );
 
     if (this.plugin.settings.rerankingEnabled) {
-      new Setting(advancedContainer)
-        .setName("Reranking Threshold")
-        .setDesc(
-          "Mindest-Score für Reranking-Ergebnisse (0.0-1.0)."
-        )
-        .addSlider((slider) =>
-          slider
-            .setLimits(0, 1, 0.05)
-            .setValue(this.plugin.settings.rerankingThreshold)
-            .setDynamicTooltip()
-            .onChange(async (value) => {
-              this.plugin.settings.rerankingThreshold = value;
-              await this.plugin.saveSettings();
-              await this.plugin.client.updateConfig(
-                "reranking.threshold",
-                String(value)
-              );
-            })
-        );
+      this.addSliderSetting(advancedContainer, {
+        name: "Reranking Threshold",
+        desc: "Mindest-Score für Reranking-Ergebnisse (0.0-1.0). Höher = strenger filtern.",
+        min: 0,
+        max: 1,
+        step: 0.05,
+        value: this.plugin.settings.rerankingThreshold,
+        format: (v) => v.toFixed(2),
+        onChange: async (value) => {
+          this.plugin.settings.rerankingThreshold = value;
+          await this.plugin.saveSettings();
+          await this.plugin.client.updateConfig("reranking.threshold", String(value));
+        },
+      });
     }
 
     this.addSectionTitle(advancedContainer, "GARS-Scoring");
 
+    advancedContainer.createEl("p", {
+      text: "⚠ Erst ab ~500 Notizen sinnvoll. Bei kleineren Vaults wurde ein Relevanz-Verlust von -21 % gemessen (Hit@1 gegen BM25+Vector).",
+      cls: "setting-item-description mneme-warning-text",
+    });
+
     new Setting(advancedContainer)
       .setName("GARS aktivieren")
       .setDesc(
-        "Graph-Aware Scoring: Berücksichtigt Wikilink-Vernetzung. Gut vernetzte Notizen werden bevorzugt."
+        "Graph-Aware Ranking Score: multipliziert Suchtreffer mit der Wikilink-Zentralität. Gut vernetzte Notizen ranken höher."
       )
       .addToggle((toggle) =>
         toggle
@@ -359,25 +335,20 @@ export class MnemeSettingsTab extends PluginSettingTab {
       );
 
     if (this.plugin.settings.garsEnabled) {
-      new Setting(advancedContainer)
-        .setName("Graph Weight")
-        .setDesc(
-          "Gewichtung der Graph-Vernetzung im GARS-Score (0.0-1.0)."
-        )
-        .addSlider((slider) =>
-          slider
-            .setLimits(0, 1, 0.05)
-            .setValue(this.plugin.settings.graphWeight)
-            .setDynamicTooltip()
-            .onChange(async (value) => {
-              this.plugin.settings.graphWeight = value;
-              await this.plugin.saveSettings();
-              await this.plugin.client.updateConfig(
-                "scoring.graph_weight",
-                String(value)
-              );
-            })
-        );
+      this.addSliderSetting(advancedContainer, {
+        name: "Graph Weight",
+        desc: "Gewichtung der Graph-Vernetzung im GARS-Score (0.0-1.0). Höher = vernetzte Notizen stärker bevorzugen.",
+        min: 0,
+        max: 1,
+        step: 0.05,
+        value: this.plugin.settings.graphWeight,
+        format: (v) => v.toFixed(2),
+        onChange: async (value) => {
+          this.plugin.settings.graphWeight = value;
+          await this.plugin.saveSettings();
+          await this.plugin.client.updateConfig("scoring.graph_weight", String(value));
+        },
+      });
     }
 
     this.addSectionTitle(advancedContainer, "Auto-Search");
@@ -406,14 +377,19 @@ export class MnemeSettingsTab extends PluginSettingTab {
 
     this.addSectionTitle(advancedContainer, "Health");
 
+    advancedContainer.createEl("p", {
+      text: "Health-Check prüft den Vault auf verwaiste Notizen (ohne eingehende Links), schwache Verlinkung (<2 Links), veraltete Notizen (>180 Tage nicht geändert) und nahezu-Duplikate. Die Exclude-Patterns betreffen NUR diese Analyse — nicht den Such-Index.",
+      cls: "setting-item-description",
+    });
+
     new Setting(advancedContainer)
       .setName("Health Exclude Patterns")
       .setDesc(
-        "Komma-getrennte Ordner-Muster die bei Health-Checks ignoriert werden (z.B. templates/**, .trash/**)."
+        "Komma-getrennte Glob-Muster die im Health-Report ignoriert werden. Beispiele: '04 Ressourcen/**/Newsletter/**' (externe Inhalte), '05 Daily Notes/**' (Journal)."
       )
       .addText((text) =>
         text
-          .setPlaceholder("templates/**, .trash/**")
+          .setPlaceholder("templates/**, 05 Daily Notes/**")
           .setValue(
             this.plugin.settings.healthExcludePatterns.join(", ")
           )
@@ -436,7 +412,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Server automatisch starten")
       .setDesc(
-        "Startet den Mneme-Server beim Öffnen von Obsidian. Der Server überwacht Dateiänderungen automatisch im Hintergrund (Watchdog)."
+        "Startet einen Mneme-Server beim Öffnen von Obsidian für Live-File-Monitoring (Watchdog). Lädt ~5 GB RAM für das Embedding-Modell. Nur aktivieren, wenn du Dateiänderungen während Obsidian-Sessions live indexiert haben willst. MCP-Clients (Claude Code / Claudian) starten ihren eigenen Server — dieser hier wäre parallel und redundant. Default: Aus."
       )
       .addToggle((toggle) =>
         toggle
@@ -519,6 +495,43 @@ export class MnemeSettingsTab extends PluginSettingTab {
     containerEl.createEl("div", {
       text: title,
       cls: "mneme-settings-section-title",
+    });
+  }
+
+  /** Add a slider setting with a persistent numeric value display next to it. */
+  private addSliderSetting(
+    container: HTMLElement,
+    opts: {
+      name: string;
+      desc: string;
+      min: number;
+      max: number;
+      step: number;
+      value: number;
+      format?: (v: number) => string;
+      onChange: (v: number) => Promise<void>;
+    }
+  ): void {
+    const fmt = opts.format ?? ((v: number) => String(v));
+    let displayEl: HTMLElement;
+
+    const setting = new Setting(container)
+      .setName(opts.name)
+      .setDesc(opts.desc)
+      .addSlider((slider) => {
+        slider
+          .setLimits(opts.min, opts.max, opts.step)
+          .setValue(opts.value)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (displayEl) displayEl.textContent = fmt(value);
+            await opts.onChange(value);
+          });
+      });
+
+    displayEl = setting.controlEl.createSpan({
+      cls: "mneme-slider-value",
+      text: fmt(opts.value),
     });
   }
 }

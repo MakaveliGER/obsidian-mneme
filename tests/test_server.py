@@ -87,7 +87,7 @@ def server_with_vault(tmp_path: Path):
 
     with patch("mneme.server.get_provider") as mock_get:
         mock_get.return_value = MockEmbeddingProvider()
-        server = create_server(config)
+        server = create_server(config, background_init=False)
 
     # Index all notes so tests have data to work with
     _call("reindex", server, full=True)
@@ -135,7 +135,7 @@ def test_server_has_eight_tools(tmp_path: Path):
         mock_provider = MagicMock()
         mock_provider.dimension.return_value = 16
         mock_get_provider.return_value = mock_provider
-        server = create_server(config)
+        server = create_server(config, background_init=False)
 
     tool_names = list(server._tool_manager._tools.keys())
     assert len(tool_names) == 8
@@ -333,7 +333,7 @@ def test_server_has_resources(tmp_path: Path):
         mock_provider = MagicMock()
         mock_provider.dimension.return_value = 16
         mock_get_provider.return_value = mock_provider
-        server = create_server(config)
+        server = create_server(config, background_init=False)
 
     resources = server._resource_manager._resources
     assert len(resources) >= 3
@@ -359,7 +359,7 @@ def test_server_has_prompts(tmp_path: Path):
         mock_provider = MagicMock()
         mock_provider.dimension.return_value = 16
         mock_get_provider.return_value = mock_provider
-        server = create_server(config)
+        server = create_server(config, background_init=False)
 
     prompts = server._prompt_manager._prompts
     assert len(prompts) >= 3

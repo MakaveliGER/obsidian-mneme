@@ -1,5 +1,7 @@
+import contextlib
 import logging
 import os
+import sys
 import time
 
 # Apply the torch.distributed shim before anything may trigger a
@@ -8,6 +10,39 @@ from mneme import _torch_compat  # noqa: F401
 from mneme.embeddings.base import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _silenced_stdout():
+    """Temporarily redirect fd 1 (stdout) to os.devnull — pipe contexts only.
+
+    sys.stdout.reconfigure is not enough — library prints that use the
+    raw fd (e.g. via print() flushed to sys.__stdout__, or C extensions)
+    still reach the original fd. We dup the fd at the OS level, so ALL
+    writes to fd 1 disappear while the context is active. Needed because
+    MCP stdio uses fd 1 as the JSON-RPC channel — any library print during
+    model load can fill the pipe and block.
+
+    In a TTY (CLI context), we skip the redirect: dup2 on a Windows console
+    handle corrupts CRT state and the subsequent JSON write fails with
+    Windows error 6 (ERROR_INVALID_HANDLE). In a terminal the pipe-fill
+    problem doesn't exist anyway — the terminal continuously drains stdout.
+    """
+    if sys.stdout.isatty():
+        yield
+        return
+
+    saved_fd = os.dup(1)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull_fd, 1)
+        try:
+            yield
+        finally:
+            os.dup2(saved_fd, 1)
+    finally:
+        os.close(devnull_fd)
+        os.close(saved_fd)
 
 def detect_device(requested: str = "auto") -> tuple[str, bool]:
     """Detect the best available compute device.
@@ -116,16 +151,45 @@ class SentenceTransformersProvider(EmbeddingProvider):
         logger.info("Loading embedding model: %s", self.model_name)
         t0 = time.monotonic()
 
-        from sentence_transformers import SentenceTransformer
+        # Heartbeat thread — runs concurrently with the heavy import so we can
+        # tell from the log whether Python is alive (periodic heartbeat) or
+        # fully frozen (no heartbeat logs). Cheap: one log line every 5s.
+        import threading as _th
+        _stop_hb = _th.Event()
+        def _heartbeat() -> None:
+            i = 0
+            while not _stop_hb.wait(timeout=5.0):
+                i += 1
+                logger.info("  [HB %d] %ds elapsed, interpreter alive", i, i * 5)
+        _hb_thread = _th.Thread(target=_heartbeat, name="mneme-import-hb", daemon=True)
+        _hb_thread.start()
+
+        try:
+            # Narrow down which sub-import hangs by importing the heavy deps
+            # one at a time before sentence_transformers. Wrap the whole
+            # import block in _silenced_stdout so any rogue library print
+            # during import can't fill the MCP stdio pipe.
+            with _silenced_stdout():
+                logger.info("  [1a/6] importing huggingface_hub...")
+                import huggingface_hub  # noqa: F401
+                logger.info("  [1b/6] importing transformers...")
+                import transformers  # noqa: F401
+                logger.info("  [1c/6] importing torch (pre)...")
+                import torch  # noqa: F401
+                logger.info("  [1d/6] importing sentence_transformers...")
+                from sentence_transformers import SentenceTransformer
+        finally:
+            _stop_hb.set()
 
         t1 = time.monotonic()
-        logger.info("  import sentence_transformers: %.1fs", t1 - t0)
+        logger.info("  [2/6] all imports done: %.1fs", t1 - t0)
 
-        import torch
+        logger.info("  [4/6] torch already imported")
 
         # Detect device
         device, is_rocm = detect_device(self._requested_device)
         self._device = device
+        logger.info("  [5/6] device detected: %s (rocm=%s)", device, is_rocm)
 
         # Enable AOTriton for ROCm (may unlock flash/mem_efficient SDPA kernels)
         if is_rocm:
@@ -149,12 +213,16 @@ class SentenceTransformersProvider(EmbeddingProvider):
         # Explicit trust_remote_code=False: never execute code from the
         # HuggingFace repo. Backstop in case MCP update_config's allowlist
         # is bypassed.
-        self._model = SentenceTransformer(
-            self.model_name,
-            device=device,
-            model_kwargs=model_kwargs,
-            trust_remote_code=False,
-        )
+        logger.info("  [6/6] instantiating SentenceTransformer...")
+        # Also silence stdout during model construction — safetensors / accelerate
+        # can print weight-loading progress that would fill the MCP pipe.
+        with _silenced_stdout():
+            self._model = SentenceTransformer(
+                self.model_name,
+                device=device,
+                model_kwargs=model_kwargs,
+                trust_remote_code=False,
+            )
         t2 = time.monotonic()
         logger.info("  model loaded on %s (%s): %.1fs", device, self._dtype_name, t2 - t1)
         logger.info("  total load time: %.1fs", t2 - t0)

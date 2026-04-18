@@ -65,7 +65,7 @@ export const DEFAULT_SETTINGS: MnemeSettings = {
   graphWeight: 0.3,
 
   hookMatchers: ["Read"],
-  autoStartServer: true,
+  autoStartServer: false,
   reindexOnStart: true,
   reindexOnClose: false,
   healthExcludePatterns: [],

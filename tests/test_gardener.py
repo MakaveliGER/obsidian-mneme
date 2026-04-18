@@ -303,7 +303,7 @@ def test_vault_health_selective_checks(gardener_setup):
         # Inject our real gardener
         mock_gardener_cls.return_value = gardener
 
-        server = create_server(config)
+        server = create_server(config, background_init=False)
 
     # Find vault_health tool and call it
     tool_fn = server._tool_manager._tools["vault_health"].fn
