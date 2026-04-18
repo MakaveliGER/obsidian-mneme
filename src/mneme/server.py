@@ -580,15 +580,29 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
     if http_mode:
         # DNS-rebinding protection: FastMCP auto-enables this for /mcp on
         # loopback binds, but custom routes don't go through that middleware.
-        # We enforce it manually by rejecting requests whose Host header
-        # doesn't match the expected loopback authorities. This prevents a
-        # malicious webpage from reading the health response via DNS rebind.
-        _allowed_host_prefixes = (
-            "127.0.0.1",
-            "localhost",
-            "[::1]",
-            "::1",
-        )
+        # We enforce it manually by parsing the Host header and matching the
+        # hostname exactly. Prefix-only matching (previous implementation) was
+        # bypassable via `127.0.0.1.evil.com` + public DNS resolvers.
+        _allowed_hosts = frozenset({"127.0.0.1", "localhost", "::1"})
+
+        def _host_is_loopback(host_header: str) -> bool:
+            if not host_header:
+                return False
+            # Strip :port — rsplit on ":" but keep IPv6 brackets intact.
+            if host_header.startswith("["):
+                # IPv6 literal: "[::1]:8765" or "[::1]"
+                end = host_header.rfind("]")
+                if end == -1:
+                    return False
+                host_only = host_header[1:end]
+            else:
+                host_only = host_header.rsplit(":", 1)[0]
+            host_only = host_only.strip().lower()
+            # Reject anything with control chars or embedded nulls — Host
+            # header shouldn't contain them.
+            if any(c < " " or c == "\x7f" for c in host_only):
+                return False
+            return host_only in _allowed_hosts
 
         @mcp.custom_route("/health", methods=["GET"])
         async def health(request: Request) -> JSONResponse:
@@ -599,8 +613,7 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
             A browser attacker via DNS rebind can still read this, but the
             fingerprint is limited to "mneme is running + warm-state".
             """
-            host_header = request.headers.get("host", "")
-            if not any(host_header.startswith(p) for p in _allowed_host_prefixes):
+            if not _host_is_loopback(request.headers.get("host", "")):
                 return JSONResponse({"error": "forbidden"}, status_code=403)
             return JSONResponse(
                 {

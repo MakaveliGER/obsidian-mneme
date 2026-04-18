@@ -151,3 +151,63 @@ def test_health_endpoint_rejects_non_loopback_host(tmp_path: Path):
     # Attacker-controlled Host (e.g. from DNS-rebind) → 403
     response = client.get("/health", headers={"host": "evil.com"})
     assert response.status_code == 403
+
+
+def test_health_endpoint_rejects_dns_rebind_prefix_bypass(tmp_path: Path):
+    """/health must reject hosts that merely *start* with a loopback string.
+
+    Regression guard: previous implementation used startswith() which let
+    `127.0.0.1.evil.com` pass (public DNS services like nip.io resolve such
+    names to 127.0.0.1 → browser sends that Host → prefix match succeeds →
+    DNS rebind succeeds). Proper fix parses the Host header and matches the
+    hostname exactly.
+    """
+    from starlette.testclient import TestClient
+
+    config = _http_config(tmp_path)
+    with patch("mneme.server.get_provider"):
+        server = create_server(config)
+
+    app = server.streamable_http_app()
+    client = TestClient(app)
+
+    bypass_attempts = [
+        "127.0.0.1.evil.com",
+        "127.0.0.1.evil.com:8765",
+        "localhost.evil.com",
+        "localhost.evil.com:8765",
+        "127.0.0.1\x00.evil.com",
+        "127.0.0.1\r\nX-Evil: 1",
+    ]
+    for host in bypass_attempts:
+        response = client.get("/health", headers={"host": host})
+        assert response.status_code == 403, (
+            f"Expected 403 for host={host!r}, got {response.status_code}"
+        )
+
+
+def test_health_endpoint_accepts_loopback_variations(tmp_path: Path):
+    """Valid loopback hosts must still be accepted after the tightened check."""
+    from starlette.testclient import TestClient
+
+    config = _http_config(tmp_path)
+    with patch("mneme.server.get_provider"):
+        server = create_server(config)
+
+    app = server.streamable_http_app()
+    client = TestClient(app)
+
+    valid_hosts = [
+        "127.0.0.1:8765",
+        "127.0.0.1",
+        "localhost:8765",
+        "localhost",
+        "LOCALHOST:8765",          # case-insensitive
+        "[::1]:8765",              # IPv6 with brackets + port
+        "[::1]",                   # IPv6 literal, no port
+    ]
+    for host in valid_hosts:
+        response = client.get("/health", headers={"host": host})
+        assert response.status_code == 200, (
+            f"Expected 200 for host={host!r}, got {response.status_code}"
+        )

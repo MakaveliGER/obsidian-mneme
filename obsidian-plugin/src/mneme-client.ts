@@ -69,7 +69,37 @@ export class MnemeClient {
       if (!response.ok) {
         return "other";
       }
-      const body = (await response.json()) as Record<string, unknown>;
+      // Cap body read to 4 KB — a squatting local service could stream a
+      // large body in 2s and OOM the plugin renderer. Real /health is ~40
+      // bytes; 4 KB leaves comfortable headroom.
+      const MAX_BODY = 4096;
+      const reader = response.body?.getReader();
+      if (!reader) return "other";
+      let total = 0;
+      const chunks: Uint8Array[] = [];
+      while (total < MAX_BODY) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        chunks.push(value);
+        if (total > MAX_BODY) {
+          reader.cancel();
+          return "other";
+        }
+      }
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const c of chunks) {
+        merged.set(c, offset);
+        offset += c.byteLength;
+      }
+      const text = new TextDecoder().decode(merged);
+      let body: Record<string, unknown>;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        return "other";
+      }
       if (body.status === "ok" && "model_loaded" in body) {
         return body.model_loaded === true ? "mneme-warm" : "mneme";
       }
@@ -121,15 +151,42 @@ export class MnemeClient {
     detached: boolean = true
   ): Promise<"started" | "already-running" | "failed" | "blocked"> {
     // mnemePath safety check: data.json lives inside the vault for many users
-    // and can be tampered with via vault-sync. Only allow "mneme" (PATH
-    // resolution) or a path whose basename starts with "mneme" — prevents
-    // an attacker-controlled data.json from silently pointing us at an
-    // arbitrary executable on plugin startup.
-    const basename =
-      this.mnemePath.split(/[\\/]/).pop()?.toLowerCase() ?? "";
-    const basenameStem = basename.replace(/\.exe$/i, "");
-    if (basenameStem !== "mneme") {
-      return "blocked";
+    // and can be tampered with via vault-sync. Defense-in-depth against an
+    // attacker-controlled data.json pointing us at an arbitrary executable:
+    //
+    //   1. Exact-match "mneme" (PATH resolution) — fine.
+    //   2. Otherwise the path must be absolute AND the basename exactly
+    //      "mneme" or "mneme.exe". Reject:
+    //      - UNC paths (\\server\share\...) — attacker-controlled remote exe
+    //      - Relative paths — traversal surface, ambiguous cwd
+    //      - Basenames that merely start with "mneme" (mneme-wrapper.exe etc)
+    //
+    // This is not a true security boundary — anyone who can write to
+    // data.json can likely also replace the venv's mneme.exe directly —
+    // but it blocks the "trivially malicious vault template" class of attack.
+    const path = this.mnemePath.trim();
+    if (path !== "mneme") {
+      // Reject UNC
+      if (path.startsWith("\\\\") || path.startsWith("//")) {
+        return "blocked";
+      }
+      // Reject relative paths — must be absolute on Windows (drive-letter
+      // or forward-slashed) or POSIX (/…)
+      const isAbsoluteWin = /^[A-Za-z]:[\\/]/.test(path);
+      const isAbsolutePosix = path.startsWith("/");
+      if (!isAbsoluteWin && !isAbsolutePosix) {
+        return "blocked";
+      }
+      // Reject traversal sequences
+      if (path.includes("\\..\\") || path.includes("/../") ||
+          path.endsWith("\\..") || path.endsWith("/..")) {
+        return "blocked";
+      }
+      // Require basename === "mneme" or "mneme.exe" (case-insensitive)
+      const basename = path.split(/[\\/]/).pop()?.toLowerCase() ?? "";
+      if (basename !== "mneme" && basename !== "mneme.exe") {
+        return "blocked";
+      }
     }
 
     if (await this.isHttpServerHealthy(port)) {
@@ -138,7 +195,11 @@ export class MnemeClient {
     try {
       const child = spawn(
         this.mnemePath,
-        ["serve", "--transport", "streamable-http", "--port", String(port)],
+        // Explicit --host 127.0.0.1 so an attacker-controlled config.toml
+        // (with server.host = "0.0.0.0") can't force a non-loopback bind
+        // via plugin-spawned processes. Server-side guard still validates.
+        ["serve", "--transport", "streamable-http",
+         "--host", "127.0.0.1", "--port", String(port)],
         {
           stdio: "ignore",
           detached,
