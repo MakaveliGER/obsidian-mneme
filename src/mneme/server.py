@@ -147,13 +147,16 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
         state["gardener"] = gardener
         state["config"] = config
 
-        # Start file watcher with shutdown hook
+        # Start file watcher. Shutdown hook depends on transport:
+        # - stdio: atexit (interpreter exit stops the watcher)
+        # - HTTP:  lifespan owns shutdown, don't double-register
         if config.vault.path:
             logger.info("init step: VaultWatcher.start")
             watcher = VaultWatcher(config.vault_path, indexer, config)
             watcher.start()
             state["watcher"] = watcher
-            atexit.register(watcher.stop)
+            if not http_mode:
+                atexit.register(watcher.stop)
 
         logger.info("Mneme ready (%.1fs)", time.monotonic() - t0)
 

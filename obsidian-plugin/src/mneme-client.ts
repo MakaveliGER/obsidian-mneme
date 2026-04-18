@@ -147,30 +147,6 @@ export class MnemeClient {
     }
   }
 
-  /** Legacy stdio-spawn — kept for tests / backward compat, not used in v0.3+ */
-  startServer(): boolean {
-    if (this.serverProcess && !this.serverProcess.killed) {
-      return true;
-    }
-    try {
-      this.serverProcess = spawn(this.mnemePath, ["serve"], {
-        stdio: "ignore",
-        detached: false,
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
-      });
-      this.serverProcess.on("error", () => {
-        this.serverProcess = null;
-      });
-      this.serverProcess.on("exit", () => {
-        this.serverProcess = null;
-      });
-      return true;
-    } catch {
-      this.serverProcess = null;
-      return false;
-    }
-  }
-
   /** Stop the Mneme server process we spawned (only works if NOT detached) */
   stopServer(): void {
     if (this.serverProcess && !this.serverProcess.killed) {
