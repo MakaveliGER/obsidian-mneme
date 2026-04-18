@@ -553,29 +553,34 @@ def create_server(config: MnemeConfig | None = None, *, background_init: bool = 
     # HTTP-only: /health endpoint for liveness checks and autostart probes
     # ------------------------------------------------------------------
     if http_mode:
+        # DNS-rebinding protection: FastMCP auto-enables this for /mcp on
+        # loopback binds, but custom routes don't go through that middleware.
+        # We enforce it manually by rejecting requests whose Host header
+        # doesn't match the expected loopback authorities. This prevents a
+        # malicious webpage from reading the health response via DNS rebind.
+        _allowed_host_prefixes = (
+            "127.0.0.1",
+            "localhost",
+            "[::1]",
+            "::1",
+        )
+
         @mcp.custom_route("/health", methods=["GET"])
-        async def health(_request: Request) -> JSONResponse:  # noqa: ARG001
+        async def health(request: Request) -> JSONResponse:
             """Liveness/readiness probe. 200 as soon as the server is up;
-            ``model_loaded`` flips to True once the lifespan pre-warm finishes.
+            ``model_loaded`` flips to True once init finishes.
+
+            Response intentionally minimal — no vault size, no error details.
+            A browser attacker via DNS rebind can still read this, but the
+            fingerprint is limited to "mneme is running + warm-state".
             """
-            store = state.get("store")
-            db_size_mb = 0.0
-            if store is not None:
-                try:
-                    stats = store.get_stats(
-                        embedding_model=state["config"].embedding.model
-                    )
-                    db_size_mb = float(stats.db_size_mb)
-                except Exception:
-                    # Don't let a transient DB issue fail the health probe —
-                    # just report 0 so the caller sees the server is alive.
-                    db_size_mb = 0.0
+            host_header = request.headers.get("host", "")
+            if not any(host_header.startswith(p) for p in _allowed_host_prefixes):
+                return JSONResponse({"error": "forbidden"}, status_code=403)
             return JSONResponse(
                 {
                     "status": "ok",
                     "model_loaded": "provider" in state,
-                    "db_size_mb": db_size_mb,
-                    "init_error": state.get("init_error"),
                 }
             )
 

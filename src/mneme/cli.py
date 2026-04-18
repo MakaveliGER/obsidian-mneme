@@ -137,6 +137,44 @@ def serve(transport: str | None, host: str | None, port: int | None):
         )
         raise SystemExit(1)
 
+    # HTTP-mode safety checks before we open a listening socket.
+    if chosen == "streamable-http":
+        bind_host = config.server.host
+        loopback = {"127.0.0.1", "localhost", "::1", "[::1]"}
+        if bind_host not in loopback:
+            if os.environ.get("MNEME_ALLOW_NONLOOPBACK") != "1":
+                click.echo(
+                    f"Error: refusing to bind to '{bind_host}'. Mneme has no "
+                    "auth — binding off-loopback exposes your vault to the "
+                    "network. Set host to 127.0.0.1, or export "
+                    "MNEME_ALLOW_NONLOOPBACK=1 if you know what you're doing.",
+                    err=True,
+                )
+                raise SystemExit(1)
+            click.echo(
+                f"Warning: binding to '{bind_host}' (non-loopback). No auth. "
+                "Any device on this network can read your vault.",
+                err=True,
+            )
+        # Probe the port first so we fail with a clear message instead of a
+        # mid-boot uvicorn OSError. 127.0.0.1:port is the canonical case.
+        import socket
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            probe.bind((bind_host if bind_host != "localhost" else "127.0.0.1",
+                        config.server.port))
+        except OSError:
+            click.echo(
+                f"Error: port {config.server.port} is already in use on "
+                f"{bind_host}. Another instance of Mneme, or another app, is "
+                "holding the port. Set a different port via "
+                f"`mneme serve --port <N>` or edit server.port in config.toml.",
+                err=True,
+            )
+            raise SystemExit(1)
+        finally:
+            probe.close()
+
     # stdio MCP transport shares stdout with the JSON-RPC stream — any library
     # that prints model-load progress to stdout would corrupt the protocol.
     # Silence everything progress-related before the model is loaded. Harmless
@@ -144,34 +182,44 @@ def serve(transport: str | None, host: str | None, port: int | None):
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
     os.environ.setdefault("TQDM_DISABLE", "1")
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-    # Prevent HF-Hub network calls during model load — MCP servers must not
-    # block on network I/O. Cached models only.
-    os.environ.setdefault("HF_HUB_OFFLINE", "1")
-    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    # Offline-by-default for cached models. Users who want first-time download
+    # or model updates can override with MNEME_ALLOW_NETWORK=1 — avoids a
+    # cryptic "offline" error on fresh installs when the HF cache is missing.
+    if os.environ.get("MNEME_ALLOW_NETWORK") != "1":
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
     log_dir = Path(platformdirs.user_data_dir("mneme"))
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "mneme-server.log"
 
-    # Diagnostic: if anything hangs for >45s, dump all thread stack traces
-    # to a debug file. Lets us see *exactly* where the Python interpreter is
-    # stuck without having to attach a debugger.
-    import faulthandler
-    fault_log = log_dir / "mneme-stacktrace.log"
-    _fault_file = open(fault_log, "a", encoding="utf-8", buffering=1)
-    faulthandler.enable(file=_fault_file)
-    faulthandler.dump_traceback_later(45, repeat=True, file=_fault_file)
+    # Debug instrumentation is gated behind MNEME_DEBUG — in production it's
+    # noise, during the 11h MCP-hang hunt it was essential. See also the
+    # heartbeat + granular [1a/6]..[6/6] logs in embeddings/sentence_transformers.py
+    # which read the same env var.
+    debug_on = os.environ.get("MNEME_DEBUG") == "1"
+    if debug_on:
+        import faulthandler
+        fault_log = log_dir / "mneme-stacktrace.log"
+        _fault_file = open(fault_log, "a", encoding="utf-8", buffering=1)
+        faulthandler.enable(file=_fault_file)
+        faulthandler.dump_traceback_later(45, repeat=True, file=_fault_file)
 
+    # Rotate the log file — never let it grow unbounded in production.
+    from logging.handlers import RotatingFileHandler
+    log_level = logging.DEBUG if debug_on else logging.INFO
     # For stdio, stdout is the MCP JSON-RPC channel — logs MUST go to stderr
     # so they don't corrupt the protocol. HTTP mode has stdout free, but we
     # still default to stderr for consistency.
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=log_level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         datefmt="%H:%M:%S",
         handlers=[
             logging.StreamHandler(sys.stderr),
-            logging.FileHandler(log_file, mode="a", encoding="utf-8"),
+            RotatingFileHandler(
+                log_file, maxBytes=10_000_000, backupCount=3, encoding="utf-8"
+            ),
         ],
     )
     logging.getLogger(__name__).info("=== mneme serve starting (pid=%d) ===", os.getpid())

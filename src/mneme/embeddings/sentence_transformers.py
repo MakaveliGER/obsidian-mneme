@@ -151,45 +151,56 @@ class SentenceTransformersProvider(EmbeddingProvider):
         logger.info("Loading embedding model: %s", self.model_name)
         t0 = time.monotonic()
 
-        # Heartbeat thread — runs concurrently with the heavy import so we can
-        # tell from the log whether Python is alive (periodic heartbeat) or
-        # fully frozen (no heartbeat logs). Cheap: one log line every 5s.
-        import threading as _th
-        _stop_hb = _th.Event()
-        def _heartbeat() -> None:
-            i = 0
-            while not _stop_hb.wait(timeout=5.0):
-                i += 1
-                logger.info("  [HB %d] %ds elapsed, interpreter alive", i, i * 5)
-        _hb_thread = _th.Thread(target=_heartbeat, name="mneme-import-hb", daemon=True)
-        _hb_thread.start()
+        # Heartbeat + granular sub-import logs are debug instrumentation from
+        # the MCP-stdio-hang hunt. Gate behind MNEME_DEBUG so production logs
+        # stay clean — the fix (HTTP transport) means these almost never fire
+        # in useful ways for end users, and "HB 5 interpreter alive" looks
+        # alarming even when benign.
+        debug_on = os.environ.get("MNEME_DEBUG") == "1"
+
+        if debug_on:
+            import threading as _th
+            _stop_hb = _th.Event()
+            def _heartbeat() -> None:
+                i = 0
+                while not _stop_hb.wait(timeout=5.0):
+                    i += 1
+                    logger.info("  [HB %d] %ds elapsed, interpreter alive", i, i * 5)
+            _hb_thread = _th.Thread(target=_heartbeat, name="mneme-import-hb", daemon=True)
+            _hb_thread.start()
+        else:
+            _stop_hb = None
 
         try:
-            # Narrow down which sub-import hangs by importing the heavy deps
-            # one at a time before sentence_transformers. Wrap the whole
-            # import block in _silenced_stdout so any rogue library print
-            # during import can't fill the MCP stdio pipe.
+            # Wrap imports in _silenced_stdout so any rogue library print
+            # during import can't fill the MCP stdio pipe (no-op in HTTP mode
+            # and in TTY contexts).
             with _silenced_stdout():
-                logger.info("  [1a/6] importing huggingface_hub...")
+                if debug_on:
+                    logger.debug("  [1a/6] importing huggingface_hub...")
                 import huggingface_hub  # noqa: F401
-                logger.info("  [1b/6] importing transformers...")
+                if debug_on:
+                    logger.debug("  [1b/6] importing transformers...")
                 import transformers  # noqa: F401
-                logger.info("  [1c/6] importing torch (pre)...")
+                if debug_on:
+                    logger.debug("  [1c/6] importing torch (pre)...")
                 import torch  # noqa: F401
-                logger.info("  [1d/6] importing sentence_transformers...")
+                if debug_on:
+                    logger.debug("  [1d/6] importing sentence_transformers...")
                 from sentence_transformers import SentenceTransformer
         finally:
-            _stop_hb.set()
+            if _stop_hb is not None:
+                _stop_hb.set()
 
         t1 = time.monotonic()
-        logger.info("  [2/6] all imports done: %.1fs", t1 - t0)
-
-        logger.info("  [4/6] torch already imported")
+        if debug_on:
+            logger.debug("  imports done: %.1fs", t1 - t0)
 
         # Detect device
         device, is_rocm = detect_device(self._requested_device)
         self._device = device
-        logger.info("  [5/6] device detected: %s (rocm=%s)", device, is_rocm)
+        if debug_on:
+            logger.debug("  device detected: %s (rocm=%s)", device, is_rocm)
 
         # Enable AOTriton for ROCm (may unlock flash/mem_efficient SDPA kernels)
         if is_rocm:
@@ -213,8 +224,7 @@ class SentenceTransformersProvider(EmbeddingProvider):
         # Explicit trust_remote_code=False: never execute code from the
         # HuggingFace repo. Backstop in case MCP update_config's allowlist
         # is bypassed.
-        logger.info("  [6/6] instantiating SentenceTransformer...")
-        # Also silence stdout during model construction — safetensors / accelerate
+        # Silence stdout during model construction — safetensors / accelerate
         # can print weight-loading progress that would fill the MCP pipe.
         with _silenced_stdout():
             self._model = SentenceTransformer(
@@ -224,8 +234,8 @@ class SentenceTransformersProvider(EmbeddingProvider):
                 trust_remote_code=False,
             )
         t2 = time.monotonic()
-        logger.info("  model loaded on %s (%s): %.1fs", device, self._dtype_name, t2 - t1)
-        logger.info("  total load time: %.1fs", t2 - t0)
+        logger.info("  model loaded on %s (%s): %.1fs (total %.1fs)",
+                    device, self._dtype_name, t2 - t1, t2 - t0)
 
         if device == "cuda":
             mem_allocated = torch.cuda.memory_allocated() / (1024 ** 3)
