@@ -199,6 +199,13 @@ export class MnemeSearchView extends ItemView {
   }
 
   private renderResults(container: HTMLElement, results: SearchResult[]): void {
+    // RRF-Scores sind immer klein (≈0.01–0.03) und absolute Werte haben
+    // keine feste Semantik — nur die Rangfolge zählt. Wir zeigen die
+    // Qualität daher **relativ zum Top-Treffer** der aktuellen Query:
+    // Top = 100% grün, andere nach Abstand zum Top. Damit wird der
+    // Qualitätsabfall innerhalb eines Result-Sets sofort sichtbar.
+    const topScore = results[0]?.score ?? 0;
+
     for (const result of results) {
       const item = container.createDiv({ cls: "mneme-result-item" });
 
@@ -206,16 +213,20 @@ export class MnemeSearchView extends ItemView {
       const header = item.createDiv({ cls: "mneme-result-header" });
       header.createSpan({ cls: "mneme-result-title", text: result.title || result.path });
 
+      const relative = topScore > 0 ? result.score / topScore : 0;
+      const percent = Math.round(relative * 100);
       const scoreClass =
-        result.score >= 0.75
+        relative >= 0.8
           ? "mneme-score-high"
-          : result.score >= 0.5
+          : relative >= 0.5
             ? "mneme-score-mid"
             : "mneme-score-low";
-      header.createSpan({
+      const badge = header.createSpan({
         cls: `mneme-result-score ${scoreClass}`,
-        text: result.score.toFixed(2),
+        text: `${percent}%`,
       });
+      // Tooltip shows the raw RRF value for users who care.
+      badge.setAttr("aria-label", `RRF-Score: ${result.score.toFixed(4)} (${percent}% vom Top-Treffer)`);
 
       // Path
       item.createDiv({ cls: "mneme-result-path", text: result.path });
