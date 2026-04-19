@@ -573,6 +573,9 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
     @mcp.resource("mneme://vault/stats")
     def vault_stats_resource() -> str:
         """Current vault index statistics."""
+        err = _check_init()
+        if err:
+            return json.dumps(err, indent=2)
         stats = state["store"].get_stats(embedding_model=state["config"].embedding.model)
         return json.dumps({
             "total_notes": stats.total_notes,
@@ -585,6 +588,9 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
     @mcp.resource("mneme://vault/tags")
     def vault_tags_resource() -> str:
         """List of all unique tags in the vault."""
+        err = _check_init()
+        if err:
+            return json.dumps(err, indent=2)
         rows = state["store"]._conn.execute(
             "SELECT DISTINCT tags FROM notes WHERE tags != '[]'"
         ).fetchall()
@@ -597,6 +603,9 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
     @mcp.resource("mneme://vault/graph-summary")
     def vault_graph_resource() -> str:
         """Wikilink graph summary — most connected notes."""
+        err = _check_init()
+        if err:
+            return json.dumps(err, indent=2)
         centrality = state["store"].get_centrality_map()
         top_10 = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:10]
         return json.dumps([

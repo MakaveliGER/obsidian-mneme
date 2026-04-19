@@ -291,13 +291,40 @@ class TestSchemaVersion:
     def test_older_version_raises_with_migration_hint(self, tmp_path: Path):
         db = tmp_path / "old.db"
         s = Store(db, embedding_dim=DIM)
-        s.set_schema_version(CURRENT_SCHEMA_VERSION - 1)
-        # Need at least one note so we hit the stored-version branch.
+        # v1 is older than the oldest auto-migration path (v2 -> v3) and must
+        # still raise. Newer auto-migrations are covered by their own test.
+        s.set_schema_version(1)
         s.upsert_note("a.md", "A", "h", {}, [], [])
         s.close()
 
         with pytest.raises(MnemeSchemaError, match="reindex --full"):
             Store(db, embedding_dim=DIM)
+
+    def test_v2_to_v3_auto_migration(self, tmp_path: Path):
+        """A v2 DB must gain the `modified_at` column and have it backfilled
+        from `updated_at` automatically — no manual reindex required."""
+        db = tmp_path / "v2.db"
+        s = Store(db, embedding_dim=DIM)
+        s.upsert_note("a.md", "A", "h", {}, [], [])
+        # Simulate a v2 DB: drop modified_at, pin version to 2.
+        s._conn.execute("ALTER TABLE notes DROP COLUMN modified_at")
+        s._conn.commit()
+        s.set_schema_version(2)
+        s.close()
+
+        # Reopen — migration should run silently.
+        s2 = Store(db, embedding_dim=DIM)
+        row = s2._conn.execute(
+            "SELECT updated_at, modified_at FROM notes WHERE path = 'a.md'"
+        ).fetchone()
+        assert row[1] is not None, "modified_at must be backfilled"
+        assert row[0] == row[1], "backfill must mirror updated_at verbatim"
+
+        version = s2._conn.execute(
+            "SELECT value FROM _meta WHERE key='schema_version'"
+        ).fetchone()[0]
+        assert int(version) == CURRENT_SCHEMA_VERSION
+        s2.close()
 
     def test_newer_version_raises(self, tmp_path: Path):
         db = tmp_path / "newer.db"
@@ -318,3 +345,66 @@ class TestSchemaVersion:
         # With the bypass flag, reopening the same old DB must not raise.
         s2 = Store(db, embedding_dim=DIM, skip_version_check=True)
         s2.close()
+
+
+class TestOpenMetadataOnly:
+    def test_fresh_db_skips_vec_table(self, tmp_path: Path):
+        db = tmp_path / "meta.db"
+        s = Store.open_metadata_only(db)
+        tables = s._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table','virtual_table')"
+        ).fetchall()
+        table_names = {t[0] for t in tables}
+        assert "notes" in table_names
+        assert "chunks_fts" in table_names
+        assert "chunks_vec" not in table_names, (
+            "chunks_vec must not be created by open_metadata_only — "
+            "would lock a fresh DB to the wrong vector dim."
+        )
+        s.close()
+
+    def test_real_store_after_metadata_open_picks_right_dim(self, tmp_path: Path):
+        """Regression: open_metadata_only then Store(embedding_dim=1024) — the
+        vec table must end up with dim=1024, not a previously baked dummy dim."""
+        db = tmp_path / "seq.db"
+
+        s_meta = Store.open_metadata_only(db)
+        s_meta.close()
+
+        s_real = Store(db, embedding_dim=1024)
+        # Verify chunks_vec now exists and accepts 1024-dim vectors.
+        tables = s_real._conn.execute(
+            "SELECT name FROM sqlite_master WHERE name='chunks_vec'"
+        ).fetchall()
+        assert tables, "chunks_vec must be created by the real Store opener"
+
+        # Insert a 1024-dim vec — would fail with 'dimension mismatch' if the
+        # table had been pre-baked to dim=1.
+        note_id = s_real.upsert_note("x.md", "X", "h", {}, [], [])
+        s_real.upsert_chunks(
+            note_id,
+            [
+                ChunkData(
+                    content="c",
+                    heading_path="## x",
+                    chunk_index=0,
+                    embedding=_random_vec(1024),
+                )
+            ],
+        )
+        s_real.close()
+
+    def test_metadata_only_can_read_stats_and_bm25(self, tmp_path: Path):
+        db = tmp_path / "bm25.db"
+        # Seed data with a real Store (dim=16)
+        s = Store(db, embedding_dim=DIM)
+        _insert_note_with_chunks(s, "a.md", "Alpha note")
+        s.close()
+
+        # Metadata-only: stats + BM25 must still work.
+        s_meta = Store.open_metadata_only(db)
+        stats = s_meta.get_stats(embedding_model="bge-m3")
+        assert stats.total_notes == 1
+        hits = s_meta.bm25_search("Alpha", top_k=3)
+        assert any("a.md" in r.note_path for r in hits)
+        s_meta.close()

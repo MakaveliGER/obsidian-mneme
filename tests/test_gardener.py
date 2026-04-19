@@ -107,11 +107,13 @@ def gardener_setup(gardener_vault: Path, tmp_path: Path):
     store, indexer, provider, config = _make_store_and_indexer(gardener_vault, tmp_path)
     indexer.index_vault(full=True)
 
-    # Backdate stale.md's updated_at to 60 days ago
+    # Backdate stale.md to 60 days ago. Must touch BOTH modified_at and
+    # updated_at because find_stale_notes uses COALESCE(modified_at, updated_at):
+    # leaving modified_at at "today" would make the note look fresh.
     old_ts = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
     store._conn.execute(
-        "UPDATE notes SET updated_at = ? WHERE path LIKE '%stale%'",
-        (old_ts,),
+        "UPDATE notes SET updated_at = ?, modified_at = ? WHERE path LIKE '%stale%'",
+        (old_ts, old_ts),
     )
     store._conn.commit()
 
@@ -152,7 +154,7 @@ def test_find_stale_notes(gardener_setup):
         assert "path" in item
         assert "title" in item
         assert "status" in item
-        assert "last_updated" in item
+        assert "last_modified" in item
         assert "days_stale" in item
         assert item["days_stale"] > 0
 
@@ -313,3 +315,92 @@ def test_vault_health_selective_checks(gardener_setup):
     assert "weakly_linked" not in result
     assert "stale_notes" not in result
     assert "near_duplicates" not in result
+
+
+# ---------------------------------------------------------------------------
+# Plugin contract — fields consumed by obsidian-plugin/src/health-modal.ts
+# Any rename here is a breaking change for the plugin UI. Keep in sync with
+# obsidian-plugin/src/types.ts::HealthReport.
+# ---------------------------------------------------------------------------
+
+
+def test_contract_orphans_shape(gardener_setup):
+    gardener, _ = gardener_setup
+    orphans = gardener.find_orphans()
+    for item in orphans:
+        assert set(["path", "title"]).issubset(item.keys()), (
+            f"Plugin consumes path+title from orphan_pages; got {sorted(item.keys())}"
+        )
+
+
+def test_contract_weakly_linked_shape(tmp_path: Path):
+    """weakly_linked[].suggested_links[].{path,title,similarity} — not `suggestions`/`score`."""
+    # Build a vault where at least one note has <=1 links but semantic neighbours
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "a.md").write_text("## A\n\nTopic alpha beta gamma.", encoding="utf-8")
+    (vault / "b.md").write_text("## B\n\nTopic alpha beta gamma.", encoding="utf-8")
+    (vault / "c.md").write_text("## C\n\nTopic alpha beta gamma.", encoding="utf-8")
+
+    # Deterministic embeddings: all three notes get the SAME vector so get_similar finds them.
+    class SameVecProvider(EmbeddingProvider):
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            v = [1.0 / math.sqrt(DIM)] * DIM
+            return [list(v) for _ in texts]
+
+        def dimension(self) -> int:
+            return DIM
+
+    config = MnemeConfig(
+        vault=VaultConfig(path=str(vault), glob_patterns=["**/*.md"], exclude_patterns=[]),
+        chunking=ChunkingConfig(max_tokens=200, overlap_tokens=20),
+    )
+    store = Store(tmp_path / "contract.db", embedding_dim=DIM)
+    provider = SameVecProvider()
+    indexer = Indexer(store=store, embedding_provider=provider, config=config)
+    indexer.index_vault(full=True)
+    search_engine = _make_search_engine(store, provider, config)
+    gardener = VaultGardener(store, search_engine)
+
+    weakly = gardener.find_weakly_linked()
+    assert weakly, "expected at least one weakly-linked note in this fixture"
+    for item in weakly:
+        assert "suggested_links" in item, (
+            f"Plugin reads `suggested_links`, not `suggestions`. Got {sorted(item.keys())}"
+        )
+        assert "suggestions" not in item, (
+            "Field `suggestions` would break the plugin — use `suggested_links`"
+        )
+        for sug in item["suggested_links"]:
+            assert set(["path", "title", "similarity"]).issubset(sug.keys()), (
+                f"Plugin reads path+title+similarity from each suggestion; got {sorted(sug.keys())}"
+            )
+            assert "score" not in sug, (
+                "Field `score` would break the plugin — use `similarity`"
+            )
+
+
+def test_contract_near_duplicates_shape(gardener_setup):
+    """near_duplicates[].note_a.path / note_b.path — not `path_a`/`path_b`."""
+    gardener, _ = gardener_setup
+    # Even if the fixture returns 0 duplicates, we assert the shape by probing
+    # with a threshold of 0.0 which admits anything.
+    dups = gardener.find_near_duplicates(threshold=0.0)
+    if not dups:
+        pytest.skip("no duplicates produced by this fixture — shape test skipped")
+    for dup in dups:
+        assert "note_a" in dup and "note_b" in dup, (
+            f"Plugin reads note_a/note_b, not path_a/path_b. Got {sorted(dup.keys())}"
+        )
+        assert "path_a" not in dup and "path_b" not in dup
+        assert "path" in dup["note_a"] and "path" in dup["note_b"]
+        assert "similarity" in dup
+
+
+def test_contract_stale_notes_shape(gardener_setup):
+    gardener, _ = gardener_setup
+    stale = gardener.find_stale_notes(days=30)
+    for item in stale:
+        assert set(["path", "title", "days_stale"]).issubset(item.keys()), (
+            f"Plugin reads path+title+days_stale from stale_notes; got {sorted(item.keys())}"
+        )

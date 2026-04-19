@@ -68,15 +68,17 @@ export class MnemeSettingsTab extends PluginSettingTab {
           )
           .setValue(this.plugin.settings.autoSearchMode)
           .onChange(async (value: string) => {
-            this.plugin.settings.autoSearchMode = value as
-              | "off"
-              | "smart"
-              | "always";
+            const mode = value as "off" | "smart" | "always";
+            this.plugin.settings.autoSearchMode = mode;
             await this.plugin.saveSettings();
-            this.plugin.client.scheduleConfigUpdate(
-              "auto_search.mode",
-              value
-            );
+            try {
+              const msg = await this.plugin.client.setAutoSearchMode(mode);
+              new Notice(`Auto-Search: ${msg || mode}`);
+            } catch (err: unknown) {
+              const errMsg =
+                err instanceof Error ? err.message : "Unbekannter Fehler";
+              new Notice(`Auto-Search-Wechsel fehlgeschlagen: ${errMsg}`);
+            }
           })
       );
 
@@ -371,7 +373,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             this.plugin.client.scheduleConfigUpdate(
               "auto_search.hook_matchers",
-              this.plugin.settings.hookMatchers.join(",")
+              JSON.stringify(this.plugin.settings.hookMatchers)
             );
           })
       );
@@ -402,7 +404,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             this.plugin.client.scheduleConfigUpdate(
               "health.exclude_patterns",
-              this.plugin.settings.healthExcludePatterns.join(",")
+              JSON.stringify(this.plugin.settings.healthExcludePatterns)
             );
           })
       );
@@ -413,7 +415,7 @@ export class MnemeSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Server automatisch starten")
       .setDesc(
-        "Startet einen Mneme-Server beim Öffnen von Obsidian für Live-File-Monitoring (Watchdog). Lädt ~5 GB RAM für das Embedding-Modell. Nur aktivieren, wenn du Dateiänderungen während Obsidian-Sessions live indexiert haben willst. MCP-Clients (Claude Code / Claudian) starten ihren eigenen Server — dieser hier wäre parallel und redundant. Default: Aus."
+        "Startet einen Mneme-Server beim Öffnen von Obsidian für Live-File-Monitoring (Watchdog). Lädt ~5 GB RAM für das Embedding-Modell. Nur aktivieren, wenn du Dateiänderungen während Obsidian-Sessions live indexiert haben willst. MCP-Clients (Claude Code / Claudian) starten ihren eigenen Server — dieser hier wäre parallel und redundant. Default: Ein (startet beim Öffnen von Obsidian)."
       )
       .addToggle((toggle) =>
         toggle

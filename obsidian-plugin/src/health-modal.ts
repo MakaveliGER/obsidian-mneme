@@ -50,7 +50,7 @@ export class MnemeHealthModal extends Modal {
         title: "Weakly Linked",
         items: report.weakly_linked.map((n) => ({
           path: n.path,
-          label: `${n.title || n.path} (${n.suggestions.length} Vorschläge)`,
+          label: `${n.title || n.path} (${n.suggested_links.length} Vorschläge)`,
         })),
       });
     }
@@ -69,8 +69,8 @@ export class MnemeHealthModal extends Modal {
       sections.push({
         title: "Near Duplicates",
         items: report.near_duplicates.map((n) => ({
-          path: n.path_a,
-          label: `${n.path_a} ↔ ${n.path_b} (${(n.similarity * 100).toFixed(0)}%)`,
+          path: n.note_a.path,
+          label: `${n.note_a.path} ↔ ${n.note_b.path} (${(n.similarity * 100).toFixed(0)}%)`,
         })),
       });
     }

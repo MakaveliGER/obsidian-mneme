@@ -110,12 +110,17 @@ export interface HealthReport {
   weakly_linked?: Array<{
     path: string;
     title: string;
-    suggestions: Array<{ path: string; title: string; score: number }>;
+    current_links?: number;
+    suggested_links: Array<{
+      path: string;
+      title: string;
+      similarity: number;
+    }>;
   }>;
   stale_notes?: Array<{ path: string; title: string; days_stale: number }>;
   near_duplicates?: Array<{
-    path_a: string;
-    path_b: string;
+    note_a: { path: string; title: string };
+    note_b: { path: string; title: string };
     similarity: number;
   }>;
 }

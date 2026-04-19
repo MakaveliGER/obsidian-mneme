@@ -6,6 +6,44 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `Store.open_metadata_only()` classmethod for BM25/stats access without a
+  real embedding model. Replaces the `Store(db, embedding_dim=1)` hack in
+  `mneme status` and `mneme hook-search`, which baked a dummy `float[1]`
+  into fresh DBs via `IF NOT EXISTS` and broke the next real reindex with a
+  dimension mismatch.
+- Schema v3: `notes.modified_at` column (file mtime, ISO-8601 UTC) separate
+  from `notes.updated_at` (re-index timestamp). Auto-migrates v2 DBs by
+  backfilling `modified_at = updated_at` on first open — no manual reindex
+  required. `find_stale_notes` now uses
+  `COALESCE(modified_at, updated_at)` so a full reindex no longer makes
+  stale notes look fresh.
+- Gardener contract test: pins the exact field names the Obsidian plugin
+  consumes (`suggested_links`, `note_a.path`, `note_b.path`, …). Any future
+  rename fails the build instead of silently breaking the Health modal.
+
+### Changed
+- `find_near_duplicates` samples deterministically (sorted path prefix)
+  instead of `random.sample`. The same vault now produces the same report;
+  `sample_size` is configurable (default 30).
+- Obsidian plugin `health-modal.ts` reads the real backend shape:
+  `weakly_linked[].suggested_links` (not `suggestions`),
+  `near_duplicates[].note_a.path` / `note_b.path` (not `path_a` / `path_b`).
+  The Vault Health panel rendered `undefined` at these points before.
+- Obsidian plugin settings send list-typed config values
+  (`auto_search.hook_matchers`, `health.exclude_patterns`) as JSON arrays —
+  `config.py` rejects comma-strings, so user edits were silently discarded.
+- Obsidian plugin Auto-Search dropdown routes through the real
+  `setAutoSearchMode()` workflow (emits a Notice on success/failure) instead
+  of only writing `auto_search.mode` to the config file and skipping the
+  side-effects.
+- MCP Resources (`mneme://vault/stats`, `/tags`, `/graph-summary`) now run
+  through `_check_init()` and return a JSON error when the server is still
+  initializing, matching tool behaviour. Previously they raised
+  `KeyError: 'store'` on stdio cold-start reads.
+- Plugin `autoStartServer` docs + `keepServerRunningAfterClose` comment
+  aligned with the real `types.ts` defaults (autoStart on, persistence off).
+
 ## [0.3.1] - 2026-04-18
 
 Launch-prep release: HTTP transport, Obsidian-plugin auto-start with

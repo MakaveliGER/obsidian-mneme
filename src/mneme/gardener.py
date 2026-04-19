@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import random
 from datetime import datetime, timezone, timedelta
 
 from mneme.store import Store
@@ -167,24 +166,31 @@ class VaultGardener:
         return results[:top_k]
 
     def find_stale_notes(self, days: int = 30) -> list[dict]:
-        """Find notes with status 'aktiv' that haven't been updated in >days days."""
+        """Find notes with status 'aktiv' whose FILE has not been edited in >days days.
+
+        Uses ``modified_at`` (file mtime from disk) — NOT ``updated_at`` which
+        is the technical re-index timestamp. A full reindex must not make
+        notes look "fresh". COALESCE against ``updated_at`` keeps the check
+        working on DBs that were backfilled from v2 before any real reindex.
+        """
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         cutoff_str = cutoff.isoformat()
 
         rows = self.store._conn.execute(
             """
-            SELECT path, title, frontmatter, updated_at
+            SELECT path, title, frontmatter,
+                   COALESCE(modified_at, updated_at) AS last_modified
             FROM notes
             WHERE frontmatter LIKE '%"status": "aktiv"%'
-              AND updated_at < ?
-            ORDER BY updated_at ASC
+              AND COALESCE(modified_at, updated_at) < ?
+            ORDER BY last_modified ASC
             """,
             (cutoff_str,),
         ).fetchall()
 
         now = datetime.now(timezone.utc)
         results = []
-        for path, title, frontmatter_json, updated_at in rows:
+        for path, title, frontmatter_json, last_modified in rows:
             if self._is_excluded(path):
                 continue
             fm = json.loads(frontmatter_json) if frontmatter_json else {}
@@ -192,31 +198,36 @@ class VaultGardener:
             if fm.get("status") != "aktiv":
                 continue
             try:
-                updated_dt = datetime.fromisoformat(updated_at)
-                if updated_dt.tzinfo is None:
-                    updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                modified_dt = datetime.fromisoformat(last_modified)
+                if modified_dt.tzinfo is None:
+                    modified_dt = modified_dt.replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
-            days_stale = (now - updated_dt).days
+            days_stale = (now - modified_dt).days
             results.append({
                 "path": path,
                 "title": title,
                 "status": fm.get("status", ""),
-                "last_updated": updated_at,
+                "last_modified": last_modified,
                 "days_stale": days_stale,
             })
 
         results.sort(key=lambda x: x["days_stale"], reverse=True)
         return results
 
-    def find_near_duplicates(self, threshold: float = 0.85) -> list[dict]:
+    def find_near_duplicates(
+        self, threshold: float = 0.85, sample_size: int = 30
+    ) -> list[dict]:
         """Find pairs of notes that are semantically very similar (potential duplicates).
 
-        Checks a sample of up to 30 notes. Each pair is reported only once.
+        Deterministic: sorts non-excluded paths alphabetically and scans the
+        first ``sample_size`` notes. Each pair is reported only once. The old
+        implementation used ``random.sample`` which produced different results
+        on every call and hid duplicates from the UI seemingly at random.
         """
         all_paths = self.store.get_all_note_paths()
-        non_excluded = [p for p in all_paths if not self._is_excluded(p)]
-        sample = random.sample(non_excluded, min(30, len(non_excluded)))
+        non_excluded = sorted(p for p in all_paths if not self._is_excluded(p))
+        sample = non_excluded[: max(0, sample_size)]
 
         seen_pairs: set[frozenset[str]] = set()
         results: list[dict] = []

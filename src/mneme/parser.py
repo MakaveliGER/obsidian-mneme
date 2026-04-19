@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -117,13 +118,14 @@ def extract_tags(frontmatter: dict, body: str) -> list[str]:
 
 @dataclass
 class ParsedNote:
-    path: str           # relative path inside vault
-    title: str          # filename without .md (or frontmatter title)
-    content_hash: str   # SHA-256 of entire raw file content
+    path: str                 # relative path inside vault
+    title: str                # filename without .md (or frontmatter title)
+    content_hash: str         # SHA-256 of entire raw file content
     frontmatter: dict
     tags: list[str]
     wikilinks: list[str]
-    body: str           # content without frontmatter
+    body: str                 # content without frontmatter
+    modified_at: str = ""     # ISO-8601 UTC file mtime; empty -> store falls back to now()
 
 
 #: Upper bound on a single note's size. Notes above this are skipped to
@@ -145,7 +147,8 @@ def parse_note(file_path: Path, vault_root: Path) -> ParsedNote:
     Raises:
         NoteTooLargeError: if the file exceeds ``MAX_NOTE_SIZE_BYTES``.
     """
-    size = file_path.stat().st_size
+    stat_result = file_path.stat()
+    size = stat_result.st_size
     if size > MAX_NOTE_SIZE_BYTES:
         raise NoteTooLargeError(
             f"{file_path.name} is {size / 1_048_576:.1f} MB, "
@@ -163,6 +166,10 @@ def parse_note(file_path: Path, vault_root: Path) -> ParsedNote:
     wikilinks = extract_wikilinks(body)
     tags = extract_tags(frontmatter, body)
 
+    modified_at = datetime.fromtimestamp(
+        stat_result.st_mtime, tz=timezone.utc
+    ).isoformat()
+
     return ParsedNote(
         path=relative_path,
         title=title,
@@ -171,6 +178,7 @@ def parse_note(file_path: Path, vault_root: Path) -> ParsedNote:
         tags=tags,
         wikilinks=wikilinks,
         body=body,
+        modified_at=modified_at,
     )
 
 

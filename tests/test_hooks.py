@@ -22,6 +22,20 @@ from mneme.store import SearchResult
 # Helpers
 # ---------------------------------------------------------------------------
 
+
+def _patched_store(mock_store):
+    """Patch ``mneme.store.Store`` so BOTH ``Store(...)`` and
+    ``Store.open_metadata_only(...)`` resolve to ``mock_store``. Hook-search
+    was migrated to the classmethod after the vector-dim-lock fix (v0.3.2);
+    without this helper the classmethod returns a fresh MagicMock and the
+    test's real assertions miss the mock entirely.
+    """
+    store_class_mock = MagicMock()
+    store_class_mock.return_value = mock_store
+    store_class_mock.open_metadata_only.return_value = mock_store
+    return patch("mneme.store.Store", store_class_mock)
+
+
 def _make_search_result(
     chunk_id: int = 1,
     note_path: str = "02 Projekte/KI-Strategie.md",
@@ -119,7 +133,7 @@ class TestHookSearchOutput:
         mock_config.db_path = Path("/vault/.mneme.db")
 
         with patch("mneme.cli.load_config", return_value=mock_config), \
-             patch("mneme.store.Store", return_value=mock_store):
+             _patched_store(mock_store):
             runner = CliRunner()
             result = runner.invoke(main, ["hook-search"], input=stdin_json)
 
@@ -150,7 +164,7 @@ class TestHookSearchOutput:
         mock_config.db_path = Path("/vault/.mneme.db")
 
         with patch("mneme.cli.load_config", return_value=mock_config), \
-             patch("mneme.store.Store", return_value=mock_store):
+             _patched_store(mock_store):
             runner = CliRunner()
             result = runner.invoke(main, ["hook-search"], input=stdin_json)
 
@@ -181,7 +195,7 @@ class TestHookSearchOutput:
         mock_config.db_path = Path("/vault/.mneme.db")
 
         with patch("mneme.cli.load_config", return_value=mock_config), \
-             patch("mneme.store.Store", return_value=mock_store):
+             _patched_store(mock_store):
             runner = CliRunner()
             result = runner.invoke(main, ["hook-search"], input=stdin_json)
 
@@ -228,7 +242,7 @@ class TestHookSearchOutput:
         mock_config.db_path = Path("/vault/.mneme.db")
 
         with patch("mneme.cli.load_config", return_value=mock_config), \
-             patch("mneme.store.Store", return_value=mock_store):
+             _patched_store(mock_store):
             runner = CliRunner()
             result = runner.invoke(main, ["hook-search"], input=stdin_json)
 
@@ -266,7 +280,7 @@ class TestHookSearchFast:
         mock_config.db_path = Path("/vault/.mneme.db")
 
         with patch("mneme.cli.load_config", return_value=mock_config), \
-             patch("mneme.store.Store", return_value=mock_store):
+             _patched_store(mock_store):
             runner = CliRunner()
             result = runner.invoke(main, ["hook-search"], input=stdin_json)
 
@@ -287,7 +301,7 @@ class TestHookSearchFast:
         mock_config.db_path = Path("/vault/.mneme.db")
 
         with patch("mneme.cli.load_config", return_value=mock_config), \
-             patch("mneme.store.Store", return_value=mock_store):
+             _patched_store(mock_store):
             runner = CliRunner()
             runner.invoke(main, ["hook-search"], input=stdin_json)
 

@@ -221,6 +221,7 @@ class Indexer:
             frontmatter=parsed.frontmatter,
             tags=parsed.tags,
             wikilinks=parsed.wikilinks,
+            modified_at=parsed.modified_at,
         )
         self._store.upsert_chunks(note_id, chunk_data)
         return note_id

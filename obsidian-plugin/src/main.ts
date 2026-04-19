@@ -179,9 +179,9 @@ export default class MnemePlugin extends Plugin {
     // don't keep firing requests at a server that may be gone.
     this.client.setHttpPort(null);
 
-    // Only stop the server if the user opted into the non-persistent mode.
-    // The default is to keep it running so Claudian (and the next Obsidian
-    // session) find it already warm — cold-start cost is paid once per boot.
+    // Default behaviour: stop the server on unload. Users who want a
+    // warm server for Claudian (or the next Obsidian session) can opt in
+    // via `keepServerRunningAfterClose`.
     if (!this.settings.keepServerRunningAfterClose) {
       this.client.stopServer();
     }

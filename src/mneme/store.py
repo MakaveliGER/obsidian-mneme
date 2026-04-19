@@ -46,7 +46,7 @@ def _serialize_float_vec(vec: list[float]) -> bytes:
     return struct.pack(f"{len(vec)}f", *vec)
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 class MnemeSchemaError(RuntimeError):
@@ -77,6 +77,30 @@ class Store:
         if not skip_version_check:
             self._verify_schema_version()
 
+    @classmethod
+    def open_metadata_only(cls, db_path: Path) -> "Store":
+        """Open a Store for BM25/metadata access without a real embedding model.
+
+        Skips creation of the `chunks_vec` virtual table so a fresh DB does
+        NOT get locked into a dummy dimension (previously: `embedding_dim=1`
+        baked `float[1]` into an `IF NOT EXISTS` table, making the next real
+        reindex fail with a dim mismatch).
+        """
+        store = cls.__new__(cls)
+        store.db_path = db_path
+        store.embedding_dim = 0  # sentinel — vec table is not created
+        store._lock = threading.Lock()
+        store._alias_map_cache = None
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        store._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        store._conn.execute("PRAGMA journal_mode=WAL")
+        store._conn.execute("PRAGMA foreign_keys=ON")
+        store._conn.execute("PRAGMA busy_timeout=5000")
+        store._load_extensions()
+        store._create_schema(skip_vec_table=True)
+        store._verify_schema_version()
+        return store
+
     def _load_extensions(self) -> None:
         try:
             self._conn.enable_load_extension(True)
@@ -89,7 +113,7 @@ class Store:
                 "Install sqlite-vec: pip install sqlite-vec"
             ) from e
 
-    def _create_schema(self) -> None:
+    def _create_schema(self, skip_vec_table: bool = False) -> None:
         cur = self._conn.cursor()
         cur.executescript("""
             CREATE TABLE IF NOT EXISTS _meta (
@@ -105,7 +129,8 @@ class Store:
                 frontmatter TEXT,
                 tags        TEXT,
                 wikilinks   TEXT,
-                updated_at  TEXT NOT NULL
+                updated_at  TEXT NOT NULL,
+                modified_at TEXT
             );
 
             CREATE TABLE IF NOT EXISTS chunks (
@@ -138,13 +163,16 @@ class Store:
             )
         """)
 
-        # sqlite-vec virtual table
-        cur.execute(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
-                chunk_id INTEGER PRIMARY KEY,
-                embedding float[{self.embedding_dim}]
-            )
-        """)
+        # sqlite-vec virtual table — only created with a real embedding dim.
+        # A metadata-only open (BM25/stats) skips this so a dummy dim doesn't
+        # lock a fresh DB to the wrong vector width.
+        if not skip_vec_table:
+            cur.execute(f"""
+                CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
+                    chunk_id INTEGER PRIMARY KEY,
+                    embedding float[{self.embedding_dim}]
+                )
+            """)
 
         # Triggers to keep FTS5 in sync with chunks
         cur.executescript("""
@@ -170,6 +198,8 @@ class Store:
 
         Fresh DBs (no notes yet) are initialized to CURRENT_SCHEMA_VERSION.
         Legacy DBs (data present but no version row) raise with a migration hint.
+        Known in-place upgrades (e.g. v2 -> v3 `modified_at` column) are
+        applied automatically.
         """
         cur = self._conn.cursor()
         row = cur.execute(
@@ -180,6 +210,13 @@ class Store:
             if stored == CURRENT_SCHEMA_VERSION:
                 return
             if stored < CURRENT_SCHEMA_VERSION:
+                # v2 -> v3: add modified_at column and backfill from updated_at.
+                # updated_at is a strict lower bound (re-index time is always
+                # >= real file mtime) so it is safe as a one-shot backfill
+                # until the next reindex populates the accurate value.
+                if stored == 2:
+                    self._migrate_v2_to_v3()
+                    return
                 raise MnemeSchemaError(
                     f"DB schema is v{stored}, this Mneme needs v{CURRENT_SCHEMA_VERSION}. "
                     f"Run `mneme reindex --full` to migrate."
@@ -199,6 +236,25 @@ class Store:
                 f"Run `mneme reindex --full` to migrate to v{CURRENT_SCHEMA_VERSION}."
             )
 
+    def _migrate_v2_to_v3(self) -> None:
+        """Add `modified_at` column and backfill from `updated_at`."""
+        with self._lock:
+            cols = {
+                row[1]
+                for row in self._conn.execute("PRAGMA table_info(notes)").fetchall()
+            }
+            if "modified_at" not in cols:
+                self._conn.execute("ALTER TABLE notes ADD COLUMN modified_at TEXT")
+            self._conn.execute(
+                "UPDATE notes SET modified_at = updated_at WHERE modified_at IS NULL"
+            )
+            self._conn.execute(
+                "INSERT INTO _meta (key, value) VALUES ('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (str(CURRENT_SCHEMA_VERSION),),
+            )
+            self._conn.commit()
+
     def set_schema_version(self, version: int) -> None:
         """Persist the schema version into the `_meta` table."""
         with self._lock:
@@ -217,11 +273,21 @@ class Store:
         frontmatter: dict,
         tags: list[str],
         wikilinks: list[str],
+        modified_at: str | None = None,
     ) -> int:
-        """Insert or update a note. Returns note_id."""
+        """Insert or update a note. Returns note_id.
+
+        ``updated_at`` is always the current time — it is the technical
+        "indexed at" timestamp and MUST NOT be used for stale-note detection.
+        ``modified_at`` is the file's mtime (set by the parser/indexer) and is
+        the fachlich correct timestamp for "last edit". Callers that don't
+        have a file-mtime (tests, direct store writes) may pass ``None`` and
+        the field falls back to the same value as ``updated_at``.
+        """
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).isoformat()
+        modified_at_value = modified_at or now
         with self._lock:
             # Alias map depends only on (id, path) — detect whether this is a
             # new insert and keep the cache valid for content-only updates.
@@ -232,15 +298,16 @@ class Store:
                 self._alias_map_cache = None
 
             self._conn.execute(
-                """INSERT INTO notes (path, title, content_hash, frontmatter, tags, wikilinks, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO notes (path, title, content_hash, frontmatter, tags, wikilinks, updated_at, modified_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(path) DO UPDATE SET
                        title=excluded.title,
                        content_hash=excluded.content_hash,
                        frontmatter=excluded.frontmatter,
                        tags=excluded.tags,
                        wikilinks=excluded.wikilinks,
-                       updated_at=excluded.updated_at""",
+                       updated_at=excluded.updated_at,
+                       modified_at=excluded.modified_at""",
                 (
                     path,
                     title,
@@ -249,6 +316,7 @@ class Store:
                     json.dumps(tags),
                     json.dumps(wikilinks),
                     now,
+                    modified_at_value,
                 ),
             )
             row = self._conn.execute(

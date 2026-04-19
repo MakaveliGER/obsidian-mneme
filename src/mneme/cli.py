@@ -370,8 +370,9 @@ def status(as_json: bool):
 
     from mneme.store import Store
 
-    # Open store with dim=1 — we only read stats, no embedding needed
-    store = Store(config.db_path, embedding_dim=1)
+    # Metadata-only open — skips chunks_vec creation so a fresh DB is never
+    # locked to the wrong vector dim.
+    store = Store.open_metadata_only(config.db_path)
     stats = store.get_stats(embedding_model=config.embedding.model)
     store.close()
 
@@ -661,10 +662,9 @@ def hook_search():
     try:
         from mneme.store import Store
 
-        # Open store with a dummy embedding dim (we only use BM25)
-        # Use dim=1 to avoid loading anything; Store._load_extensions is needed
-        # for sqlite-vec but the BM25 path doesn't touch chunks_vec.
-        store = Store(config.db_path, embedding_dim=1)
+        # Metadata-only open — BM25 does not touch chunks_vec, and skipping
+        # that table avoids baking a dummy dim into a fresh DB.
+        store = Store.open_metadata_only(config.db_path)
         # Fetch extra candidates so we still have enough after self-filter
         results = store.bm25_search(query, top_k=4 if source_path else 3)
         store.close()

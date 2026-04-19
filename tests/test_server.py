@@ -343,6 +343,36 @@ def test_server_has_resources(tmp_path: Path):
     assert "mneme://vault/graph-summary" in uris
 
 
+def test_resources_return_error_when_not_initialized(tmp_path: Path):
+    """Pre-init reads must not crash with KeyError — they must return the same
+    error JSON that tools return via `_check_init()`. Regression: resources
+    bypassed the init guard entirely and raised on `state["store"]`."""
+    import json as _json
+
+    db_path = tmp_path / "test.db"
+    config = MnemeConfig(
+        vault=VaultConfig(path=str(tmp_path)),
+        database=DatabaseConfig(path=str(db_path)),
+    )
+
+    with patch("mneme.server.get_provider") as mock_get_provider:
+        mock_provider = MagicMock()
+        mock_provider.dimension.return_value = 16
+        mock_get_provider.return_value = mock_provider
+        # Force the init worker to fail so _check_init returns an error dict
+        # instead of triggering a real initialization.
+        with patch("mneme.server.Indexer", side_effect=RuntimeError("boom")):
+            server = create_server(config, eager_init=False)
+
+            for uri in ("mneme://vault/stats", "mneme://vault/tags", "mneme://vault/graph-summary"):
+                res = server._resource_manager._resources[uri]
+                result = res.fn()
+                parsed = _json.loads(result)
+                assert "error" in parsed, (
+                    f"Resource {uri} must return a JSON error on pre-init failure, got {parsed!r}"
+                )
+
+
 # ---------------------------------------------------------------------------
 # MCP Prompts
 # ---------------------------------------------------------------------------
