@@ -523,8 +523,8 @@ def update_config(key: str, value: str):
 @main.command("search")
 @click.argument("query")
 @click.option("--top-k", default=10, show_default=True, help="Number of results.")
-@click.option("--json", "as_json", is_flag=True, default=True, help="Output as JSON (default).")
-def search(query: str, top_k: int, as_json: bool):
+@click.option("--text", "as_text", is_flag=True, default=False, help="Plain-text output (default is JSON).")
+def search(query: str, top_k: int, as_text: bool):
     """Search the vault using hybrid semantic + keyword search."""
     config = load_config()
     if not config.vault.path:
@@ -532,7 +532,7 @@ def search(query: str, top_k: int, as_json: bool):
         raise SystemExit(1)
 
     from mneme.embeddings import get_provider
-    from mneme.search import SearchEngine
+    from mneme.search import SearchEngine, serialize_results
     from mneme.store import Store
 
     provider = get_provider(config.embedding)
@@ -541,35 +541,27 @@ def search(query: str, top_k: int, as_json: bool):
     results = engine.search(query=query, top_k=top_k)
     store.close()
 
+    # Same serialization the server uses — clean_snippet, relevance_pct,
+    # heading-path fallback. CLI and server must not drift on this.
     output = {
-        "results": [
-            {
-                "path": r.note_path,
-                "title": r.note_title,
-                "heading_path": r.heading_path,
-                "content": r.content[:1500],
-                "score": round(r.score, 4),
-                "tags": r.tags,
-            }
-            for r in results
-        ],
+        "results": serialize_results(results),
         "query": query,
         "total_results": len(results),
     }
 
-    if as_json:
-        click.echo(json.dumps(output, ensure_ascii=False))
-    else:
+    if as_text:
         click.echo(f"Found {len(results)} results for: {query}")
         for r in results:
             click.echo(f"  [{r.score:.4f}] {r.note_title} ({r.note_path})")
+    else:
+        click.echo(json.dumps(output, ensure_ascii=False))
 
 
 @main.command("similar")
 @click.argument("path")
 @click.option("--top-k", default=5, show_default=True, help="Number of similar notes.")
-@click.option("--json", "as_json", is_flag=True, default=True, help="Output as JSON (default).")
-def similar(path: str, top_k: int, as_json: bool):
+@click.option("--text", "as_text", is_flag=True, default=False, help="Plain-text output (default is JSON).")
+def similar(path: str, top_k: int, as_text: bool):
     """Find semantically similar notes via average chunk embedding."""
     from mneme.paths import normalize_vault_path
 
@@ -588,7 +580,7 @@ def similar(path: str, top_k: int, as_json: bool):
         raise SystemExit(1)
 
     from mneme.embeddings import get_provider
-    from mneme.search import SearchEngine
+    from mneme.search import SearchEngine, serialize_results
     from mneme.store import Store
 
     provider = get_provider(config.embedding)
@@ -598,27 +590,17 @@ def similar(path: str, top_k: int, as_json: bool):
     store.close()
 
     output = {
-        "results": [
-            {
-                "path": r.note_path,
-                "title": r.note_title,
-                "heading_path": r.heading_path,
-                "content": r.content[:1500],
-                "score": round(r.score, 4),
-                "tags": r.tags,
-            }
-            for r in results
-        ],
+        "results": serialize_results(results),
         "source_path": normalized,
         "total_results": len(results),
     }
 
-    if as_json:
-        click.echo(json.dumps(output, ensure_ascii=False))
-    else:
+    if as_text:
         click.echo(f"Found {len(results)} similar notes for: {normalized}")
         for r in results:
             click.echo(f"  [{r.score:.4f}] {r.note_title} ({r.note_path})")
+    else:
+        click.echo(json.dumps(output, ensure_ascii=False))
 
 
 @main.command("hook-search")

@@ -71,6 +71,49 @@ def clean_snippet(text: str, max_chars: int = 200) -> str:
     return cut.rstrip() + "…"
 
 
+def serialize_results(
+    results: list[SearchResult],
+    *,
+    include_content: bool = True,
+    snippet_chars: int = 200,
+) -> list[dict]:
+    """Format a list of SearchResult as JSON-ready dicts.
+
+    - Adds ``relevance_pct`` (0-100, relative to the top result's score).
+      Absolute RRF values are ~0.01-0.03 and meaningless to users; the
+      percentage is cross-query intuitive ("top = 100%, others drop off").
+    - Cleans ``content`` via ``clean_snippet`` so code fences and markdown
+      tables don't pollute LLM context / Plugin previews.
+    - Falls back to ``heading_path`` when the cleaned snippet is empty
+      (chunks that are pure code / tables leave nothing to show otherwise).
+    - Top result is always 100% (by construction). Score stays in output
+      for debugging / power users.
+
+    Shared between the MCP server tools, the REST fast-path, and the
+    ``mneme search`` / ``mneme similar`` CLI commands so the output shape
+    is identical across entry points.
+    """
+    if not results:
+        return []
+    top_score = results[0].score
+    out: list[dict] = []
+    for r in results:
+        rel = round((r.score / top_score) * 100) if top_score > 0 else 0
+        d: dict = {
+            "path": r.note_path,
+            "title": r.note_title,
+            "score": round(r.score, 4),
+            "relevance_pct": rel,
+        }
+        if include_content:
+            d["heading_path"] = r.heading_path
+            snippet = clean_snippet(r.content, max_chars=snippet_chars)
+            d["content"] = snippet or (r.heading_path or r.note_title)
+            d["tags"] = r.tags
+        out.append(d)
+    return out
+
+
 def rrf_fusion(
     result_lists: list[list[SearchResult]],
     weights: list[float] | None = None,

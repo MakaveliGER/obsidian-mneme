@@ -23,6 +23,14 @@ uses [Semantic Versioning](https://semver.org/).
   rename fails the build instead of silently breaking the Health modal.
 
 ### Changed
+- `mneme search` and `mneme similar` now route through the shared
+  `serialize_results()` helper (moved from `server.py` to `search.py`), so
+  the CLI output matches the MCP tool and REST responses: `relevance_pct`,
+  `clean_snippet` sanitation, and the heading-path fallback for empty
+  snippets. Replaces the hand-rolled `content[:1500]` truncation.
+- `mneme search` / `similar` CLI flag: the old `--json` flag had
+  `default=True` meaning it was logically always on (dead text branch).
+  Replaced with `--text` for plain-text output; JSON remains the default.
 - `install_hooks` reconciles the matcher set instead of deduplicating by
   command string. The old logic saw an existing `mneme hook-search` command
   and skipped adding further entries, so going from `['Read']` to

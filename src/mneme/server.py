@@ -26,7 +26,7 @@ from mneme.embeddings import get_provider
 from mneme.gardener import VaultGardener
 from mneme.indexer import Indexer
 from mneme.reranker import Reranker
-from mneme.search import SearchEngine, clean_snippet
+from mneme.search import SearchEngine, serialize_results
 from mneme.store import Store
 from mneme.watcher import VaultWatcher
 
@@ -34,40 +34,6 @@ logger = logging.getLogger(__name__)
 
 
 from mneme.paths import normalize_vault_path
-
-
-def _serialize_results(results, *, include_content: bool = True, snippet_chars: int = 200) -> list[dict]:
-    """Format a list of SearchResult as JSON-ready dicts.
-
-    - Adds ``relevance_pct`` (0-100, relative to the top result's score).
-      Absolute RRF values are ~0.01-0.03 and meaningless to users; the
-      percentage is cross-query intuitive ("top = 100%, others drop off").
-    - Cleans ``content`` via ``clean_snippet`` so code fences and markdown
-      tables don't pollute LLM context / Plugin previews.
-    - Falls back to ``heading_path`` when the cleaned snippet is empty
-      (chunks that are pure code / tables leave nothing to show otherwise).
-    - Top result is always 100% (by construction). Score stays in output
-      for debugging / power users.
-    """
-    if not results:
-        return []
-    top_score = results[0].score
-    out: list[dict] = []
-    for r in results:
-        rel = round((r.score / top_score) * 100) if top_score > 0 else 0
-        d: dict = {
-            "path": r.note_path,
-            "title": r.note_title,
-            "score": round(r.score, 4),
-            "relevance_pct": rel,
-        }
-        if include_content:
-            d["heading_path"] = r.heading_path
-            snippet = clean_snippet(r.content, max_chars=snippet_chars)
-            d["content"] = snippet or (r.heading_path or r.note_title)
-            d["tags"] = r.tags
-        out.append(d)
-    return out
 
 
 class ServerState(TypedDict, total=False):
@@ -313,7 +279,7 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
         return {
-            "results": _serialize_results(results),
+            "results": serialize_results(results),
             "query": query,
             "total_results": len(results),
             "search_time_ms": elapsed_ms,
@@ -340,7 +306,7 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
         results = state["search"].get_similar(path=normalized, top_k=top_k)
 
         return {
-            "results": _serialize_results(results, include_content=False),
+            "results": serialize_results(results, include_content=False),
             "source_path": normalized,
             "total_results": len(results),
         }
@@ -755,7 +721,7 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
             )
             elapsed_ms = int((time.monotonic() - start) * 1000)
             return JSONResponse({
-                "results": _serialize_results(results),
+                "results": serialize_results(results),
                 "query": query,
                 "total_results": len(results),
                 "search_time_ms": elapsed_ms,
@@ -779,7 +745,7 @@ def create_server(config: MnemeConfig | None = None, *, eager_init: bool = False
             top_k = max(1, min(int(body.get("top_k", 5)), 50))
             results = state["search"].get_similar(path=normalized, top_k=top_k)
             return JSONResponse({
-                "results": _serialize_results(results),
+                "results": serialize_results(results),
                 "source_path": normalized,
                 "total_results": len(results),
             })
