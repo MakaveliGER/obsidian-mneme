@@ -23,6 +23,16 @@ uses [Semantic Versioning](https://semver.org/).
   rename fails the build instead of silently breaking the Health modal.
 
 ### Changed
+- `install_hooks` reconciles the matcher set instead of deduplicating by
+  command string. The old logic saw an existing `mneme hook-search` command
+  and skipped adding further entries, so going from `['Read']` to
+  `['Read','Bash']` silently kept only `Read`. It now removes Mneme-owned
+  entries first and re-installs exactly the requested matchers; user-owned
+  hooks in the same event are preserved. Codex review follow-up 2026-04-19.
+- Obsidian plugin Auto-Search dropdown now applies the backend workflow
+  first and only persists the local `autoSearchMode` on success, rolling the
+  dropdown UI back if the backend call fails. Prevents the plugin from
+  claiming a mode that CLAUDE.md / hooks never adopted.
 - `find_near_duplicates` samples deterministically (sorted path prefix)
   instead of `random.sample`. The same vault now produces the same report;
   `sample_size` is configurable (default 30).

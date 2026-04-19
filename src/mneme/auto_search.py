@@ -86,13 +86,18 @@ def remove_claude_md(vault_path: Path, claude_md_path: str = "CLAUDE.md") -> boo
 
 
 def install_hooks(vault_path: Path, matchers: list[str]) -> bool:
-    """Install Mneme PreToolUse hooks into .claude/settings.local.json.
+    """Reconcile Mneme PreToolUse hooks with the requested matcher list.
 
-    For each matcher a hook entry is added. Existing entries are not
-    duplicated (checked by command string containing "mneme hook-search").
+    The previous implementation deduplicated on command string alone, which
+    means the very first ``install_hooks(['Read'])`` call locked the set: a
+    later ``install_hooks(['Read','Bash'])`` kept seeing the same command and
+    never appended the ``Bash`` entry. This function now removes any
+    existing Mneme-owned entries first and re-installs exactly the entries
+    generated for *matchers*, so the file always reflects the requested set.
+    Non-Mneme hooks from the user or other tools are preserved.
 
     Returns:
-        True if the file was changed, False otherwise.
+        True if the file content changed, False otherwise.
     """
     from mneme.hooks import generate_hook_config
 
@@ -107,31 +112,31 @@ def install_hooks(vault_path: Path, matchers: list[str]) -> bool:
         except Exception:
             existing = {}
 
+    def _is_mneme_entry(entry: dict) -> bool:
+        inner_hooks = entry.get("hooks", [entry])
+        return any(
+            "mneme hook-search" in h.get("command", "")
+            for h in inner_hooks
+        )
+
     hook_config = generate_hook_config(matchers)
+    before_hooks: dict = dict(existing.get("hooks", {}))
 
-    # Merge: add entries that don't already have a "mneme hook-search" command
-    base_hooks: dict = dict(existing.get("hooks", {}))
-    changed = False
+    # Start from existing hooks minus any Mneme-owned entries.
+    base_hooks: dict = {}
+    for event_name, entries in before_hooks.items():
+        base_hooks[event_name] = [
+            entry for entry in entries if not _is_mneme_entry(entry)
+        ]
 
+    # Append the requested Mneme entries exactly once per matcher.
     for event_name, new_entries in hook_config["hooks"].items():
-        existing_entries: list = list(base_hooks.get(event_name, []))
-        existing_commands = {
-            h.get("command", "")
-            for entry in existing_entries
-            for h in entry.get("hooks", [entry])
-        }
-        for entry in new_entries:
-            entry_commands = {
-                h.get("command", "")
-                for h in entry.get("hooks", [entry])
-            }
-            if not entry_commands.intersection(existing_commands):
-                existing_entries.append(entry)
-                existing_commands.update(entry_commands)
-                changed = True
-        base_hooks[event_name] = existing_entries
+        base_hooks.setdefault(event_name, []).extend(new_entries)
 
-    if not changed:
+    # Drop event keys we emptied out to avoid noisy diffs.
+    base_hooks = {k: v for k, v in base_hooks.items() if v}
+
+    if base_hooks == before_hooks:
         return False
 
     merged = dict(existing)

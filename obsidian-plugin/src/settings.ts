@@ -69,15 +69,21 @@ export class MnemeSettingsTab extends PluginSettingTab {
           .setValue(this.plugin.settings.autoSearchMode)
           .onChange(async (value: string) => {
             const mode = value as "off" | "smart" | "always";
-            this.plugin.settings.autoSearchMode = mode;
-            await this.plugin.saveSettings();
+            // Apply to the backend FIRST; only persist locally if the
+            // CLAUDE.md / hooks workflow actually succeeded, otherwise the
+            // plugin would claim a mode the backend never applied.
             try {
               const msg = await this.plugin.client.setAutoSearchMode(mode);
+              this.plugin.settings.autoSearchMode = mode;
+              await this.plugin.saveSettings();
               new Notice(`Auto-Search: ${msg || mode}`);
             } catch (err: unknown) {
               const errMsg =
                 err instanceof Error ? err.message : "Unbekannter Fehler";
               new Notice(`Auto-Search-Wechsel fehlgeschlagen: ${errMsg}`);
+              // Visually roll the dropdown back to the persisted value so
+              // the UI reflects real state instead of the failed attempt.
+              dropdown.setValue(this.plugin.settings.autoSearchMode);
             }
           })
       );

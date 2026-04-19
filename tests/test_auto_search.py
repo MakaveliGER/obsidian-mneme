@@ -181,6 +181,70 @@ class TestInstallHooks:
         )
         assert count == 1
 
+    def test_install_hooks_grow_matchers_adds_new_entries(self, tmp_path: Path):
+        """Regression (Codex 2026-04-19 Medium): the original dedup-by-command
+        logic locked the matcher set after the first install. Going from
+        ['Read'] to ['Read','Bash'] must actually install Bash."""
+        install_hooks(tmp_path, ["Read"])
+        changed = install_hooks(tmp_path, ["Read", "Bash"])
+        assert changed is True, "Grow must be detected as a change"
+
+        data = json.loads(
+            (tmp_path / ".claude" / "settings.local.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        matchers = [e.get("matcher") for e in data["hooks"]["PreToolUse"]]
+        assert matchers == ["Read", "Bash"]
+
+    def test_install_hooks_shrink_matchers_removes_entries(self, tmp_path: Path):
+        """Shrinking the matcher list removes the dropped Mneme entry."""
+        install_hooks(tmp_path, ["Read", "Bash"])
+        changed = install_hooks(tmp_path, ["Read"])
+        assert changed is True
+
+        data = json.loads(
+            (tmp_path / ".claude" / "settings.local.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        matchers = [e.get("matcher") for e in data["hooks"]["PreToolUse"]]
+        assert matchers == ["Read"]
+
+    def test_install_hooks_preserves_non_mneme_entries(self, tmp_path: Path):
+        """User-owned hooks in PreToolUse must survive a Mneme reconcile."""
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir()
+        settings_path = settings_dir / "settings.local.json"
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "matcher": "Edit",
+                                "hooks": [
+                                    {"type": "command", "command": "user-tool-xyz"}
+                                ],
+                            }
+                        ]
+                    }
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        install_hooks(tmp_path, ["Read"])
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+        commands = [
+            h["command"]
+            for e in data["hooks"]["PreToolUse"]
+            for h in e.get("hooks", [])
+        ]
+        assert "user-tool-xyz" in commands
+        assert "mneme hook-search" in commands
+
     def test_install_hooks_creates_dot_claude_dir(self, tmp_path: Path):
         """.claude directory doesn't exist → created automatically."""
         assert not (tmp_path / ".claude").exists()
