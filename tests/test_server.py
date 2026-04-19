@@ -367,3 +367,65 @@ def test_server_has_prompts(tmp_path: Path):
     assert "research_topic" in names
     assert "vault_review" in names
     assert "find_connections" in names
+
+
+# ---------------------------------------------------------------------------
+# _serialize_results — result serialization helper
+# ---------------------------------------------------------------------------
+
+
+def _make_sr(path: str, title: str, heading: str, content: str, score: float):
+    from mneme.store import SearchResult
+    return SearchResult(
+        chunk_id=0,
+        note_path=path,
+        note_title=title,
+        heading_path=heading,
+        content=content,
+        score=score,
+        tags=[],
+    )
+
+
+def test_serialize_results_adds_relevance_pct():
+    from mneme.server import _serialize_results
+    results = [
+        _make_sr("a.md", "A", "", "Prose one.", score=0.030),
+        _make_sr("b.md", "B", "", "Prose two.", score=0.015),
+    ]
+    out = _serialize_results(results)
+    assert out[0]["relevance_pct"] == 100
+    assert out[1]["relevance_pct"] == 50
+
+
+def test_serialize_results_falls_back_to_heading_when_snippet_empty():
+    """Pure-code chunks clean to an empty snippet. The serializer must
+    fall back to heading_path (or title) so Claude / the Plugin UI still
+    show something meaningful."""
+    from mneme.server import _serialize_results
+    results = [
+        _make_sr(
+            "setup.md",
+            "Setup",
+            "# Install > ## Python",
+            "[Title: Setup | Folder: 04]\n```python\nimport x\n```",
+            score=0.02,
+        ),
+    ]
+    out = _serialize_results(results)
+    assert out[0]["content"] == "# Install > ## Python"
+
+
+def test_serialize_results_strips_context_header_from_content():
+    from mneme.server import _serialize_results
+    results = [
+        _make_sr(
+            "note.md",
+            "Note",
+            "# Heading",
+            "[Title: Note | Folder: 02 Projekte]\nReadable prose follows.",
+            score=0.02,
+        ),
+    ]
+    out = _serialize_results(results)
+    assert out[0]["content"] == "Readable prose follows."

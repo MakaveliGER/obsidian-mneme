@@ -222,21 +222,27 @@ rather than deferred to v0.3.2:
 - **`diversify_by_file` cap in `search_notes`**. The live test found
   a 70-page research document filling 4 of 5 top-k slots with deep
   code chunks, pushing dedicated domain notes out entirely. Results
-  from a single note are now capped at 3 chunks, applied after RRF
-  fusion and before the top-k slice (and as input to the reranker,
-  so the reranker's candidate pool is already diverse). The best
-  chunks per note survive the cap; ordering within and across notes
-  is preserved.
+  from a single note are now capped at 2 chunks (tightened from the
+  initial 3 after a retest showed 3/5 still felt monotone on narrow
+  topics), applied after RRF fusion and before the top-k slice (and
+  as input to the reranker, so the reranker's candidate pool is
+  already diverse). The best chunks per note survive the cap;
+  ordering within and across notes is preserved.
 - **`clean_snippet` for result content**. Previous `content[:1500]`
   truncation dumped raw markdown including fenced code blocks and
   table rows — noisy in LLM context windows and unreadable in the
   plugin preview. Snippets are now 200 chars of first-meaningful
-  prose: fenced code blocks stripped, table rows dropped, whitespace
+  prose: context header (`[Title: ... | Folder: ...]`) stripped,
+  fenced code blocks stripped, table rows dropped, whitespace
   collapsed, cut at a sentence boundary when one falls in the last
   40% of the budget.
+- **Heading-path fallback for empty snippets**. Chunks that are pure
+  code or tables clean to an empty string. The serializer now falls
+  back to `heading_path` (or `note_title`) so every result carries
+  something human-readable in `content` — no more blank previews.
 
 None are breaking changes: `score` stays, `content` stays (shorter),
-new `relevance_pct` is additive. `max_per_file` default of 3 is a
+new `relevance_pct` is additive. `max_per_file` default of 2 is a
 runtime behaviour change but only re-orders results within the same
 top-k that was already returned — no search misses anything it
 couldn't before.

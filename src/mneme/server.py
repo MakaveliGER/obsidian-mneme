@@ -44,6 +44,8 @@ def _serialize_results(results, *, include_content: bool = True, snippet_chars: 
       percentage is cross-query intuitive ("top = 100%, others drop off").
     - Cleans ``content`` via ``clean_snippet`` so code fences and markdown
       tables don't pollute LLM context / Plugin previews.
+    - Falls back to ``heading_path`` when the cleaned snippet is empty
+      (chunks that are pure code / tables leave nothing to show otherwise).
     - Top result is always 100% (by construction). Score stays in output
       for debugging / power users.
     """
@@ -61,7 +63,8 @@ def _serialize_results(results, *, include_content: bool = True, snippet_chars: 
         }
         if include_content:
             d["heading_path"] = r.heading_path
-            d["content"] = clean_snippet(r.content, max_chars=snippet_chars)
+            snippet = clean_snippet(r.content, max_chars=snippet_chars)
+            d["content"] = snippet or (r.heading_path or r.note_title)
             d["tags"] = r.tags
         out.append(d)
     return out

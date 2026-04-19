@@ -12,8 +12,15 @@ from mneme.reranker import Reranker
 logger = logging.getLogger(__name__)
 
 
+# Strips the `[Title: ... | Folder: ... | Tags: ...]` context header that the
+# parser prepends to every chunk. It's indexing metadata for the LLM context,
+# not something a user wants to read in a preview snippet — and at ~60-80
+# chars it eats a third of the 200-char budget.
+_CONTEXT_HEADER_RE = re.compile(r"^\s*\[Title:[^\]]*\]\s*")
+
+
 def diversify_by_file(
-    results: list[SearchResult], max_per_file: int = 3
+    results: list[SearchResult], max_per_file: int = 2
 ) -> list[SearchResult]:
     """Cap how many chunks from the same note can appear in the output.
 
@@ -44,6 +51,9 @@ def clean_snippet(text: str, max_chars: int = 200) -> str:
     """
     if not text:
         return ""
+    # Strip the chunker's context header before anything else — otherwise it
+    # eats the budget and leaks indexing metadata into the user-facing preview.
+    text = _CONTEXT_HEADER_RE.sub("", text, count=1)
     # Fenced code blocks — rarely the right thing to show as a preview
     text = re.sub(r"```[\s\S]*?```", "", text)
     # Table rows: lines with 3+ pipes are almost always markdown tables
@@ -211,7 +221,7 @@ class SearchEngine:
         # the top-k output and pushing dedicated domain notes out. Applied
         # also as input to the reranker so the reranker sees a diverse
         # candidate pool.
-        fused = diversify_by_file(fused, max_per_file=3)
+        fused = diversify_by_file(fused, max_per_file=2)
 
         if self.reranker is not None:
             # Sync GPU before CPU reranker — prevents deadlock on ROCm

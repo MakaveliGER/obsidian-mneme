@@ -306,6 +306,18 @@ def test_diversify_by_file_empty_input():
     assert diversify_by_file([], max_per_file=3) == []
 
 
+def test_diversify_by_file_default_is_two():
+    """Default cap is 2 — lets through 2 chunks per file, drops the 3rd."""
+    results = [
+        make_result(1, "a.md", score=0.9),
+        make_result(2, "a.md", score=0.8),
+        make_result(3, "a.md", score=0.7),  # must be dropped
+        make_result(4, "b.md", score=0.6),
+    ]
+    out = diversify_by_file(results)
+    assert [r.chunk_id for r in out] == [1, 2, 4]
+
+
 # ---------------------------------------------------------------------------
 # clean_snippet tests
 # ---------------------------------------------------------------------------
@@ -365,3 +377,28 @@ def test_clean_snippet_collapses_whitespace():
 def test_clean_snippet_empty_input():
     assert clean_snippet("", max_chars=200) == ""
     assert clean_snippet(None, max_chars=200) == ""  # type: ignore[arg-type]
+
+
+def test_clean_snippet_strips_context_header():
+    """The parser prepends `[Title: ... | Folder: ...]` to every chunk — this
+    header is indexing metadata, not something a user wants to read."""
+    text = "[Title: Mneme | Folder: 02 Projekte | Tags: projekt, ki]\nReal prose here."
+    out = clean_snippet(text, max_chars=200)
+    assert not out.startswith("[Title")
+    assert "Real prose here" in out
+
+
+def test_clean_snippet_strips_header_without_tags():
+    """Header without the optional Tags segment must still be stripped."""
+    text = "[Title: Foo | Folder: 04 Ressourcen]\nActual content."
+    out = clean_snippet(text, max_chars=200)
+    assert out == "Actual content."
+
+
+def test_clean_snippet_empty_after_header_and_code_strip():
+    """A chunk that is only a header + code fence leaves an empty snippet.
+    Caller is expected to fall back to heading_path; clean_snippet just
+    reports honestly what's left (nothing)."""
+    text = "[Title: Setup | Folder: 04]\n```python\nimport x\n```"
+    out = clean_snippet(text, max_chars=200)
+    assert out == ""
