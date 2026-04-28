@@ -62,6 +62,22 @@ uses [Semantic Versioning](https://semver.org/).
 - Plugin `autoStartServer` docs + `keepServerRunningAfterClose` comment
   aligned with the real `types.ts` defaults (autoStart on, persistence off).
 
+### Fixed
+- BM25 multi-token queries now use the documented OR recall semantics.
+  `Store._sanitize_fts5_query` was joining quoted tokens with whitespace,
+  which FTS5 interprets as **implicit AND** — any query containing a
+  stopword or rare token returned zero hits even when the topic words
+  matched. Tokens are now joined with explicit ` OR `, matching the
+  docstring's stated intent (`'KI-Consulting' → '"KI" OR "Consulting"'`).
+  BM25 ranking still surfaces multi-match docs first, so the recall
+  expansion does not muddy ranking. Behaviour change for downstream
+  consumers: `bm25_search` may now return more hits for queries that
+  previously returned `[]`; verify if you rely on the empty-result
+  signal. Discovered via KITS retriever Gold-v2 eval — multi-token
+  trader-language queries (e.g. *"What is the spring in Wyckoff
+  accumulation?"*) collapsed to zero BM25 hits despite clean FTS5
+  matches.
+
 ## [0.3.1] - 2026-04-18
 
 Launch-prep release: HTTP transport, Obsidian-plugin auto-start with

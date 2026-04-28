@@ -456,8 +456,13 @@ class Store:
         """Escape user query for FTS5 MATCH.
 
         FTS5 treats characters like - * : as operators. Wrapping each token
-        in double quotes makes them literal search terms.
-        E.g. 'KI-Consulting' → '"KI" "Consulting"' (OR semantics in FTS5).
+        in double quotes makes them literal search terms. Tokens are joined
+        with explicit ``OR`` — FTS5's default for space-separated phrase
+        queries is implicit AND, which silently zeroes out retrieval as
+        soon as a single token (stopword, typo, rare word) is absent.
+        BM25 already ranks docs that match more / rarer tokens higher,
+        so OR-recall + BM25-ranking gives the expected behaviour.
+        E.g. 'KI-Consulting' → '"KI" OR "Consulting"'.
 
         Length is capped to protect against pathological inputs that would
         expand into a huge OR-tree and hang FTS5.
@@ -471,7 +476,7 @@ class Store:
         tokens = [t for t in tokens if t][:64]
         if not tokens:
             return '""'
-        return " ".join(f'"{t}"' for t in tokens)
+        return " OR ".join(f'"{t}"' for t in tokens)
 
     def bm25_search(
         self,

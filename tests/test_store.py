@@ -214,8 +214,10 @@ class TestFTS5Sanitizer:
 
     def test_sanitize_preserves_words(self):
         from mneme.store import Store
-        assert Store._sanitize_fts5_query("KI-Consulting") == '"KI" "Consulting"'
-        assert Store._sanitize_fts5_query("hello world") == '"hello" "world"'
+        # Tokens are OR-joined so FTS5 returns recall-style hits even when
+        # a stopword / rare token in the user query is absent.
+        assert Store._sanitize_fts5_query("KI-Consulting") == '"KI" OR "Consulting"'
+        assert Store._sanitize_fts5_query("hello world") == '"hello" OR "world"'
         assert Store._sanitize_fts5_query("simple") == '"simple"'
 
 
